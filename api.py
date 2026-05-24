@@ -479,10 +479,93 @@ class ReconManager:
     @staticmethod
     async def detect_waf(target: str) -> dict[str, Any]:
         import aiohttp
+        import dns.resolver
+        from urllib.parse import urlparse
+        import asyncio
+        import socket
+
+        parsed = urlparse(target if "://" in target else f"http://{target}")
+        domain = parsed.netloc or parsed.path
+        if domain.startswith("www."):
+            domain = domain[4:]
+
+        # --- 0. Smart Method Mapping for Raw IPs ---
+        # Check if the target is an IP address
+        try:
+            socket.inet_aton(domain)
+            is_ip = True
+        except socket.error:
+            try:
+                socket.inet_pton(socket.AF_INET6, domain)
+                is_ip = True
+            except socket.error:
+                is_ip = False
+
+        if is_ip:
+            # Recommend L4 methods for raw IPs instead of L7
+            recommended = "TCP" if "TCP" in LAYER4_NORMAL else "SYN"
+            return {
+                "status": "success",
+                "waf": "None (Raw IP)",
+                "recommended_method": recommended,
+                "server_header": "Unknown",
+                "status_code": 0
+            }
+
+        # --- 1. DNS-First WAF Detection ---
+        def _dns_lookup():
+            detected_waf = "None"
+            recommended_method = "BYPASS" if "BYPASS" in LAYER7 else "GET"
+            
+            try:
+                # Check NS Records
+                ns_answers = dns.resolver.resolve(domain, 'NS')
+                for rdata in ns_answers:
+                    ns_name = rdata.to_text().lower()
+                    if "cloudflare" in ns_name:
+                        return "Cloudflare", "CFB"
+                    elif "sucuri" in ns_name:
+                        return "Sucuri", "BYPASS"
+            except Exception:
+                pass
+                
+            try:
+                # Check CNAME Records
+                cname_answers = dns.resolver.resolve(domain, 'CNAME')
+                for rdata in cname_answers:
+                    cname_name = rdata.to_text().lower()
+                    if "cloudflare" in cname_name:
+                        return "Cloudflare", "CFB"
+                    elif "sucuri" in cname_name:
+                        return "Sucuri", "BYPASS"
+                    elif "incapdns" in cname_name:
+                        return "Imperva/Incapsula", "BYPASS"
+            except Exception:
+                pass
+
+            return detected_waf, recommended_method
+
+        try:
+            loop = asyncio.get_event_loop()
+            dns_waf, dns_method = await loop.run_in_executor(None, _dns_lookup)
+            if dns_waf != "None":
+                return {
+                    "status": "success",
+                    "waf": dns_waf,
+                    "recommended_method": dns_method,
+                    "server_header": "Detected via DNS",
+                    "status_code": 0
+                }
+        except Exception:
+            pass # Fallback to HTTP
+
+        # --- 2. HTTP Fallback with Stealth & Timeout Optimization ---
         url = target if target.startswith("http") else f"http://{target}"
         try:
             async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(verify_ssl=False)) as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5), headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) TacticalRecon/1.0"}) as res:
+                # Use a legitimate browser User-Agent and reduce timeout to 3 seconds
+                ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=3), headers={"User-Agent": ua}) as res:
                     headers = {k.lower(): v.lower() for k, v in res.headers.items()}
                     server = headers.get("server", "")
                     
