@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>MHDDoS PRO | Void Protocol Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#c1c6db",
+                        "inverse-on-surface": "#2a3040",
+                        "surface-container-high": "#242a3a",
+                        "surface-container-lowest": "#080e1d",
+                        "on-tertiary": "#4f2500",
+                        "on-primary-fixed": "#07006c",
+                        "inverse-primary": "#494bd6",
+                        "outline-variant": "#464554",
+                        "surface-bright": "#33394a",
+                        "on-tertiary-container": "#452000",
+                        "primary": "#c0c1ff",
+                        "surface-dim": "#0d1322",
+                        "on-tertiary-fixed-variant": "#703700",
+                        "outline": "#908fa0",
+                        "on-error-container": "#ffdad6",
+                        "on-surface": "#dde2f8",
+                        "tertiary": "#ffb783",
+                        "on-tertiary-fixed": "#301400",
+                        "inverse-surface": "#dde2f8",
+                        "background": "#0d1322",
+                        "on-primary": "#1000a9",
+                        "primary-container": "#8083ff",
+                        "surface-variant": "#2f3445",
+                        "on-secondary-container": "#b0b4ca",
+                        "on-primary-fixed-variant": "#2f2ebe",
+                        "surface-container": "#191f2f",
+                        "on-secondary-fixed": "#161b2b",
+                        "on-secondary": "#2b3041",
+                        "tertiary-fixed": "#ffdcc5",
+                        "secondary-container": "#414658",
+                        "error-container": "#93000a",
+                        "tertiary-fixed-dim": "#ffb783",
+                        "tertiary-container": "#d97721",
+                        "secondary-fixed": "#dde1f8",
+                        "primary-fixed": "#e1e0ff",
+                        "secondary-fixed-dim": "#c1c6db",
+                        "on-surface-variant": "#c7c4d7",
+                        "on-primary-container": "#0d0096",
+                        "surface-container-highest": "#2f3445",
+                        "on-background": "#dde2f8",
+                        "surface": "#0d1322",
+                        "surface-container-low": "#151b2b",
+                        "on-secondary-fixed-variant": "#414658",
+                        "primary-fixed-dim": "#c0c1ff",
+                        "error": "#ffb4ab",
+                        "on-error": "#690005",
+                        "surface-tint": "#c0c1ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Space Grotesk"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .ghost-border { border: 1px solid rgba(144, 143, 160, 0.15); }
+    </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface font-body selection:bg-primary/30 min-h-screen">
+<!-- SideNavBar Shell -->
+<aside class="fixed left-0 top-0 h-full z-50 flex flex-col justify-between bg-slate-950 h-screen w-20 hover:w-64 transition-all duration-300 border-r border-slate-800/50 group overflow-hidden">
+<div class="flex flex-col">
+<!-- Brand Area -->
+<div class="p-6 flex items-center space-x-4">
+<div class="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">terminal</span>
+</div>
+<div class="opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+<h1 class="text-xl font-bold tracking-widest text-indigo-400 uppercase">MHDDoS PRO</h1>
+<p class="text-[10px] font-['JetBrains_Mono'] text-slate-500">V2.8.4 Stable</p>
+</div>
+</div>
+<!-- Primary Tabs -->
+<nav class="mt-8 px-4 space-y-2">
+<div class="bg-indigo-500/10 text-indigo-300 border-r-2 border-indigo-500 flex items-center p-3 rounded cursor-pointer transition-transform scale-95 active:scale-90">
+<span class="material-symbols-outlined mr-4">dashboard</span>
+<span class="opacity-0 group-hover:opacity-100 transition-opacity font-['Inter'] font-medium tracking-tight">Dashboard</span>
+</div>
+<div class="text-slate-500 hover:text-slate-300 hover:bg-slate-900/50 flex items-center p-3 rounded cursor-pointer transition-all">
+<span class="material-symbols-outlined mr-4">target</span>
+<span class="opacity-0 group-hover:opacity-100 transition-opacity font-['Inter'] font-medium tracking-tight">Attack Config</span>
+</div>
+<div class="text-slate-500 hover:text-slate-300 hover:bg-slate-900/50 flex items-center p-3 rounded cursor-pointer transition-all">
+<span class="material-symbols-outlined mr-4">radar</span>
+<span class="opacity-0 group-hover:opacity-100 transition-opacity font-['Inter'] font-medium tracking-tight">Targets</span>
+</div>
+<div class="text-slate-500 hover:text-slate-300 hover:bg-slate-900/50 flex items-center p-3 rounded cursor-pointer transition-all">
+<span class="material-symbols-outlined mr-4">analytics</span>
+<span class="opacity-0 group-hover:opacity-100 transition-opacity font-['Inter'] font-medium tracking-tight">Analytics</span>
+</div>
+<div class="text-slate-500 hover:text-slate-300 hover:bg-slate-900/50 flex items-center p-3 rounded cursor-pointer transition-all">
+<span class="material-symbols-outlined mr-4">history</span>
+<span class="opacity-0 group-hover:opacity-100 transition-opacity font-['Inter'] font-medium tracking-tight">Logs</span>
+</div>
+</nav>
+</div>
+<!-- Footer Tabs & CTA -->
+<div class="p-4 space-y-4">
+<button class="w-full bg-indigo-500/10 text-indigo-400 py-3 rounded-lg border border-indigo-500/30 opacity-0 group-hover:opacity-100 transition-opacity overflow-hidden whitespace-nowrap text-xs font-bold uppercase tracking-wider">
+                Launch Attack
+            </button>
+<div class="px-2 space-y-2">
+<div class="text-slate-500 hover:text-slate-300 flex items-center p-2 rounded cursor-pointer">
+<span class="material-symbols-outlined mr-4">settings</span>
+<span class="opacity-0 group-hover:opacity-100 transition-opacity text-sm">Settings</span>
+</div>
+<div class="text-slate-500 hover:text-slate-300 flex items-center p-2 rounded cursor-pointer">
+<span class="material-symbols-outlined mr-4">help_center</span>
+<span class="opacity-0 group-hover:opacity-100 transition-opacity text-sm">Support</span>
+</div>
+</div>
+<div class="flex items-center space-x-3 px-2 pt-4 border-t border-slate-800/50 group-hover:border-transparent transition-colors">
+<img alt="System Administrator Profile" class="w-8 h-8 rounded-full border border-slate-700" data-alt="professional portrait of a cybersecurity expert in a dark workspace with soft blue rim lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD8MYkRjkU2N1Iu4gu5MDTiZnqRfPJCf_yocdsFgu0-eNRv0TVBnDeul-vEctUrMSmOQtV7Dcxu_MPpthj0Yq7CygNaC4x5gYXZQk_cdXx_sr9VHEzKj_OYhTdIBLqu37HtPuPdM51Br1uCTexaAJMU6zF1NyKF3DnvNItsLzyDM8mb9rTNsnZ1-6LfRHd4Ad8fpWTrGdKrOpk_dAv5bDSODNdqLiLP2NTqRgwD2LAD41b6yt63AUaf3wHb7lrFP2pd70ogZcZfYC4"/>
+<div class="opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap overflow-hidden">
+<p class="text-xs font-bold text-on-surface">Admin_Root</p>
+<p class="text-[10px] text-slate-500">System Level 5</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-20 transition-all duration-300 min-h-screen">
+<!-- TopAppBar -->
+<header class="sticky top-0 w-full px-6 py-3 flex items-center justify-between z-40 bg-slate-950/80 backdrop-blur-xl bg-gradient-to-b from-slate-900/50 to-transparent shadow-[0_8px_32px_rgba(99,102,241,0.05)]">
+<div class="flex items-center space-x-8">
+<span class="font-black text-indigo-500 tracking-tighter text-lg uppercase">MHDDoS PRO</span>
+<nav class="hidden md:flex space-x-6">
+<a class="text-indigo-400 border-b border-indigo-500/50 font-['Inter'] font-semibold text-xs tracking-tighter uppercase" href="#">Network</a>
+<a class="text-slate-400 hover:text-indigo-300 transition-all font-['Inter'] font-semibold text-xs tracking-tighter uppercase" href="#">Threats</a>
+<a class="text-slate-400 hover:text-indigo-300 transition-all font-['Inter'] font-semibold text-xs tracking-tighter uppercase" href="#">Global Map</a>
+</nav>
+</div>
+<div class="flex items-center space-x-6">
+<div class="flex flex-col items-end">
+<span class="text-indigo-400 text-[10px] font-bold uppercase tracking-widest flex items-center">
+<span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse mr-2"></span>
+                        System Live
+                    </span>
+<span class="text-slate-500 text-[10px] font-['JetBrains_Mono']">Nodes: 1,204</span>
+</div>
+<div class="flex items-center space-x-4 border-l border-slate-800 pl-6">
+<span class="material-symbols-outlined text-slate-400 hover:text-indigo-400 cursor-pointer active:opacity-70">notifications_active</span>
+<span class="material-symbols-outlined text-slate-400 hover:text-indigo-400 cursor-pointer active:opacity-70">dns</span>
+</div>
+</div>
+</header>
+<!-- Dashboard Layout: 3 Columns -->
+<div class="p-6 grid grid-cols-12 gap-6">
+<!-- Column 1: Config (Left) -->
+<section class="col-span-12 lg:col-span-3 space-y-6">
+<div class="bg-surface-container-low p-5 rounded-xl ghost-border">
+<div class="flex items-center space-x-2 mb-6">
+<span class="material-symbols-outlined text-primary text-sm">settings_input_component</span>
+<h2 class="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Target Config</h2>
+</div>
+<div class="space-y-4">
+<div>
+<label class="text-[10px] font-['Space_Grotesk'] text-slate-500 uppercase tracking-widest block mb-2">Target URL / IP</label>
+<input class="w-full bg-surface-container-lowest border-none rounded-lg p-3 text-sm font-['JetBrains_Mono'] text-indigo-300 focus:ring-1 focus:ring-primary/50 transition-all" placeholder="192.168.1.104" type="text"/>
+</div>
+<div>
+<label class="text-[10px] font-['Space_Grotesk'] text-slate-500 uppercase tracking-widest block mb-2">Attack Method</label>
+<div class="relative group">
+<select class="w-full bg-surface-container-lowest border-none rounded-lg p-3 text-sm font-['JetBrains_Mono'] text-on-surface appearance-none cursor-pointer">
+<option>HTTP_GET</option>
+<option>HTTP_POST</option>
+<option>UDP_FLOOD</option>
+<option>TCP_BYPASS</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-3 text-slate-500 pointer-events-none">expand_more</span>
+</div>
+</div>
+<div>
+<div class="flex justify-between items-center mb-2">
+<label class="text-[10px] font-['Space_Grotesk'] text-slate-500 uppercase tracking-widest">Thread Count</label>
+<span class="text-[10px] font-['JetBrains_Mono'] text-primary">8,192</span>
+</div>
+<input class="w-full h-1 bg-surface-container-lowest rounded-lg appearance-none cursor-pointer accent-primary" type="range"/>
+</div>
+<button class="w-full mt-4 bg-gradient-to-br from-primary to-primary-container text-on-primary py-3 rounded-xl font-bold text-sm tracking-tight transition-transform active:scale-95">
+                            Initialize Attack
+                        </button>
+</div>
+</div>
+<!-- Secondary Control Card -->
+<div class="bg-surface-container-low p-5 rounded-xl ghost-border">
+<h3 class="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant mb-4">Network Protocols</h3>
+<div class="space-y-2">
+<div class="flex items-center justify-between p-2 rounded hover:bg-surface-container transition-colors">
+<span class="text-xs text-slate-400">DNS Reflection</span>
+<div class="w-8 h-4 bg-primary/20 rounded-full relative"><div class="absolute left-1 top-1 w-2 h-2 bg-primary rounded-full"></div></div>
+</div>
+<div class="flex items-center justify-between p-2 rounded hover:bg-surface-container transition-colors">
+<span class="text-xs text-slate-400">Proxy Rotation</span>
+<div class="w-8 h-4 bg-surface-container-highest rounded-full relative"><div class="absolute right-1 top-1 w-2 h-2 bg-slate-600 rounded-full"></div></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Column 2: KPIs & Telemetry (Center) -->
+<section class="col-span-12 lg:col-span-6 space-y-6">
+<!-- KPI Grid -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+<div class="bg-surface-container-low p-4 rounded-xl ghost-border flex flex-col justify-between h-28">
+<span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Traffic</span>
+<div class="flex items-baseline space-x-1">
+<span class="text-2xl font-['JetBrains_Mono'] text-indigo-300">4.2</span>
+<span class="text-xs text-slate-500">Tbps</span>
+</div>
+</div>
+<div class="bg-surface-container-low p-4 rounded-xl ghost-border flex flex-col justify-between h-28">
+<span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Latency</span>
+<div class="flex items-baseline space-x-1">
+<span class="text-2xl font-['JetBrains_Mono'] text-tertiary">14</span>
+<span class="text-xs text-slate-500">ms</span>
+</div>
+</div>
+<div class="bg-surface-container-low p-4 rounded-xl ghost-border flex flex-col justify-between h-28">
+<span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Active Nodes</span>
+<div class="flex items-baseline space-x-1">
+<span class="text-2xl font-['JetBrains_Mono'] text-primary">1.2k</span>
+</div>
+</div>
+<div class="bg-surface-container-low p-4 rounded-xl ghost-border flex flex-col justify-between h-28">
+<span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Uptime</span>
+<div class="flex items-baseline space-x-1">
+<span class="text-2xl font-['JetBrains_Mono'] text-green-400">99.9</span>
+<span class="text-xs text-slate-500">%</span>
+</div>
+</div>
+</div>
+<!-- Telemetry Visuals -->
+<div class="bg-surface-container p-6 rounded-xl ghost-border h-64 flex flex-col">
+<div class="flex justify-between items-center mb-6">
+<div class="flex items-center space-x-4">
+<h2 class="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Telemetry Flux</h2>
+<div class="flex space-x-2">
+<span class="text-[10px] font-['JetBrains_Mono'] text-primary flex items-center"><span class="w-2 h-2 rounded-full bg-primary mr-1"></span> PPS</span>
+<span class="text-[10px] font-['JetBrains_Mono'] text-secondary flex items-center"><span class="w-2 h-2 rounded-full bg-secondary mr-1"></span> Mbps</span>
+</div>
+</div>
+<span class="text-[10px] font-['JetBrains_Mono'] text-slate-500">REFRESH RATE: 50MS</span>
+</div>
+<div class="flex-grow flex items-end space-x-1">
+<!-- Mock Waveform -->
+<div class="w-full h-full relative overflow-hidden">
+<svg class="absolute inset-0 w-full h-full" preserveaspectratio="none" viewbox="0 0 400 100">
+<path d="M0 80 Q 25 20, 50 80 T 100 80 T 150 40 T 200 80 T 250 20 T 300 80 T 350 40 T 400 80" fill="none" stroke="#c0c1ff" stroke-width="2"></path>
+<path d="M0 90 Q 25 70, 50 90 T 100 90 T 150 60 T 200 90 T 250 50 T 300 90 T 350 60 T 400 90" fill="none" stroke="#c1c6db" stroke-dasharray="4 2" stroke-width="1.5"></path>
+</svg>
+<div class="absolute bottom-0 left-0 w-full h-1/4 bg-gradient-to-t from-primary/10 to-transparent"></div>
+</div>
+</div>
+</div>
+<!-- Active Tasks -->
+<div class="bg-surface-container-low p-6 rounded-xl ghost-border">
+<h2 class="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant mb-6">Active Deployments</h2>
+<div class="space-y-6">
+<div class="group">
+<div class="flex justify-between items-center mb-2">
+<div class="flex items-center space-x-3">
+<span class="material-symbols-outlined text-green-400 text-sm">check_circle</span>
+<span class="text-sm font-medium">Node Clustering: US-East-1</span>
+</div>
+<span class="text-[10px] font-['JetBrains_Mono'] text-slate-500">89%</span>
+</div>
+<div class="w-full h-1 bg-surface-container-lowest rounded-full overflow-hidden">
+<div class="w-[89%] h-full bg-primary transition-all"></div>
+</div>
+</div>
+<div class="group">
+<div class="flex justify-between items-center mb-2">
+<div class="flex items-center space-x-3">
+<span class="material-symbols-outlined text-amber-400 text-sm">sensors</span>
+<span class="text-sm font-medium">Packet Injection: RU-Proxy-7</span>
+</div>
+<span class="text-[10px] font-['JetBrains_Mono'] text-slate-500">42%</span>
+</div>
+<div class="w-full h-1 bg-surface-container-lowest rounded-full overflow-hidden">
+<div class="w-[42%] h-full bg-tertiary transition-all"></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Column 3: Logs & Map (Right) -->
+<section class="col-span-12 lg:col-span-3 space-y-6">
+<!-- Live Logs Terminal -->
+<div class="bg-surface-container-lowest rounded-xl ghost-border h-96 flex flex-col overflow-hidden">
+<div class="bg-surface-container p-3 flex justify-between items-center border-b border-slate-800/30">
+<span class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Live Console</span>
+<div class="flex space-x-1">
+<div class="w-2 h-2 rounded-full bg-error/20"></div>
+<div class="w-2 h-2 rounded-full bg-tertiary/20"></div>
+<div class="w-2 h-2 rounded-full bg-green-400/20"></div>
+</div>
+</div>
+<div class="p-4 flex-grow font-['JetBrains_Mono'] text-[11px] overflow-y-auto space-y-1 no-scrollbar">
+<p class="text-slate-600">[$] <span class="text-primary">14:02:11</span> INITIALIZING_HANDSHAKE...</p>
+<p class="text-slate-400">[$] 14:02:12 NODE_CONNECTED: 82.11.4.201</p>
+<p class="text-slate-400">[$] 14:02:14 NODE_CONNECTED: 104.22.90.11</p>
+<p class="text-error">[$] 14:02:15 ERROR: TIMEOUT_ON_PROXY_32</p>
+<p class="text-slate-400">[$] 14:02:16 RETRYING_PACKET_CLUSTER...</p>
+<p class="text-green-400">[$] 14:02:18 SUCCESS: PAYLOAD_DELIVERED</p>
+<p class="text-slate-400">[$] 14:02:20 TARGET_RESPONSE: 503_SERVICE_UNAVAILABLE</p>
+<p class="text-slate-600">[$] <span class="text-primary">14:02:22</span> MONITORING_THREAT_FLUX...</p>
+<p class="text-slate-400">[$] 14:02:25 BANDWIDTH_PEAK: 4.2TBPS</p>
+<p class="text-slate-400">[$] 14:02:28 ROTATING_USER_AGENTS...</p>
+<div class="animate-pulse bg-primary/20 w-16 h-4 inline-block mt-2"></div>
+</div>
+</div>
+<!-- Global Threat Map -->
+<div class="bg-surface-container-low p-5 rounded-xl ghost-border">
+<div class="flex justify-between items-center mb-4">
+<h2 class="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Global Map</h2>
+<span class="text-[10px] text-slate-500 font-['JetBrains_Mono']">GEO-IP ACTIVE</span>
+</div>
+<div class="relative h-48 bg-surface-container-lowest rounded-lg overflow-hidden border border-slate-800/20">
+<img class="w-full h-full object-cover opacity-40 mix-blend-screen" data-alt="abstract dark world map with neon indigo data connection lines and glowing city nodes on a black background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAb7flZM_62y7KNmcH_H2tcz21lTsyk2YbXa7UgcUCdsvznn9pYG9KHRfM79YvQmqkRgWrXPI8BDukIAWpqakqZFlW7825JfzDXxV61SPtMECXszeO1r237sQ2599oQR64dPTrWhVT_AAi0hM1D77uX1t8KVVI3cEuI8rXRblqN5emaSBvAGaqkxE7iLG5dhzFy7q_FKYg0SQLVFKtHRD6XXRuRxElqaxsZf45i45XUfJyXF2UZ4i2E7ZO1keu0Vx7HOqoVAw6zTPE"/>
+<!-- Heatmap Overlay -->
+<div class="absolute top-1/4 left-1/3 w-3 h-3 bg-primary rounded-full animate-ping"></div>
+<div class="absolute bottom-1/3 right-1/4 w-2 h-2 bg-error rounded-full shadow-[0_0_10px_rgba(255,180,171,0.5)]"></div>
+<div class="absolute top-1/2 left-1/2 w-2 h-2 bg-tertiary rounded-full"></div>
+<!-- Floating Data Label -->
+<div class="absolute bottom-2 left-2 bg-surface-container-high/80 backdrop-blur p-2 rounded border border-slate-700 text-[9px] font-['JetBrains_Mono']">
+<p class="text-primary">LATEST_HIT: SEOUL, KR</p>
+<p class="text-slate-400">LAT: 37.5665 / LON: 126.9780</p>
+</div>
+</div>
+</div>
+<!-- Action Hub -->
+<div class="grid grid-cols-2 gap-3">
+<button class="flex flex-col items-center justify-center p-4 bg-surface-container-low rounded-xl ghost-border hover:bg-surface-container transition-colors group">
+<span class="material-symbols-outlined text-slate-500 group-hover:text-primary transition-colors mb-2">shield_with_heart</span>
+<span class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Self Protect</span>
+</button>
+<button class="flex flex-col items-center justify-center p-4 bg-surface-container-low rounded-xl ghost-border hover:bg-surface-container transition-colors group">
+<span class="material-symbols-outlined text-slate-500 group-hover:text-error transition-colors mb-2">dangerous</span>
+<span class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Kill All</span>
+</button>
+</div>
+</section>
+</div>
+</main>
+</body></html>

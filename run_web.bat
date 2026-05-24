@@ -21,7 +21,8 @@ if exist ".venv\Scripts\activate.bat" (
 
 :: 2. Launch Application
 echo [*] Starting MHDDoS GUI Module...
-python -m src.gui.web_runner
+:: Python handles Redis and Terminal Output piping now
+python -m src.gui.web_runner %*
 
 :: 3. Error Handling / Persistence
 if %ERRORLEVEL% neq 0 (

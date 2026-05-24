@@ -21,7 +21,7 @@ import psutil
 import aiohttp
 
 # --- Configuration ---
-__version__ = "1.6.1"
+__version__ = "1.6.4"
 try:
     from src.core.paths import get_project_root
 except ImportError:
@@ -307,7 +307,7 @@ class WorkerNode:
                         await ws.send_json({
                             "token": self.token,
                             "node_id": self.node_id,
-                            "version": "1.6.1"
+                            "version": "1.6.4"
                         })
                         
                         auth_response = await ws.receive_json()
