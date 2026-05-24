@@ -710,16 +710,29 @@ const term = document.getElementById('terminal-content');
         }
 
         async function analyzeTarget() {
-            const target = document.getElementById('target').value;
+            let target = document.getElementById('target').value;
             if (!target) return appendLog("[!] RECON_ERR: Target required for radar scan.", "ERROR");
-            appendLog(`[*] INITIATING RADAR SCAN: Analyzing infrastructure for ${target}...`);
+
+            target = target.trim();
+            if (!target.startsWith('http://') && !target.startsWith('https://')) {
+                target = 'http://' + target;
+            }
             try {
-                const res = await fetch('/api/recon/analyze', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ target })
-                });
-                const data = await res.json();
+                new URL(target);
+            } catch (e) {
+                return appendLog("[!] RECON_ERR: Invalid URL structure.", "ERROR");
+            }
+            document.getElementById('target').value = target;
+
+            appendLog(`[*] INITIATING RADAR SCAN: Analyzing infrastructure for ${target}...`);
+
+            const analyzePromise = fetch('/api/recon/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target })
+            })
+            .then(res => res.json())
+            .then(data => {
                 if (data.status === 'success') {
                     appendLog(`[*] RADAR LOCK: Detected Stack = [${data.server}], HTTP ${data.status_code}`);
                     appendLog(`[*] TACTICAL RECOMMENDATION: Applying ${data.recommendation} sequence.`);
@@ -729,17 +742,21 @@ const term = document.getElementById('terminal-content');
                     const wafClass = (data.server || '').toLowerCase().replace(/[\/\s]/g, '');
                     badgeContainer.innerHTML = `<span class="recon-badge badge-${wafClass}">${data.server} PROTECTED</span>`;
                 } else { appendLog(`[!] RECON_FAIL: ${data.message}`, "ERROR"); }
-            } catch (e) { appendLog(`[!] API_FAIL: ${e.message}`, "ERROR"); }
-            
-            try {
-                const geoRes = await fetch(`/api/recon/geo?target=${encodeURIComponent(target)}`);
-                const geoData = await geoRes.json();
+            })
+            .catch(e => appendLog(`[!] API_FAIL: ${e.message}`, "ERROR"));
+
+            const geoPromise = fetch(`/api/recon/geo?target=${encodeURIComponent(target)}`)
+            .then(res => res.json())
+            .then(geoData => {
                 if (geoData.status === 'success') {
                     document.getElementById('geo-isp').textContent = geoData.isp;
                     document.getElementById('geo-loc').textContent = `${geoData.city}, ${geoData.country}`;
                     initMap(geoData.lat, geoData.lon);
                 }
-            } catch (e) { console.error(e); }
+            })
+            .catch(e => console.error(e));
+
+            await Promise.all([analyzePromise, geoPromise]);
         }
 
         async function startAttack() {
