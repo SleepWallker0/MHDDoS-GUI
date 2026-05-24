@@ -6,10 +6,6 @@ venv/
 .env
 .idea/
 .vscode/
-<<<<<<< HEAD
->>>>>>> 8654a927deead28bfaa1b4508b9e6622dc0c741d
-=======
->>>>>>> 8654a927deead28bfaa1b4508b9e6622dc0c741d
 .DS_Store
 *.bak
 *.tmp
