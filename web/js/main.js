@@ -47,6 +47,16 @@ window.toggleTerminalScroll = () => {
 window.switchMainView = (view) => {
     history.switchMainView(view);
 };
+
+window.scrollToConfig = () => {
+    const el = document.getElementById('config-section');
+    if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+        el.classList.add('ring-2', 'ring-primary', 'ring-offset-4', 'ring-offset-surface');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-primary', 'ring-offset-4', 'ring-offset-surface'), 2000);
+    }
+};
+
 window.refreshHistory = history.refreshHistory;
 window.changeHistoryPage = history.changeHistoryPage;
 window.showToast = showToast;
@@ -64,6 +74,42 @@ window.toggleAdvancedSettings = function() {
     }
 }
 
+async function populateFileLists() {
+    try {
+        const res = await fetch('/api/files/list');
+        const data = await res.json();
+        if (data.status === 'success') {
+            const proxySelect = document.getElementById('proxy_list');
+            const reflSelect = document.getElementById('reflector');
+            
+            if (proxySelect) {
+                proxySelect.innerHTML = data.proxies.map(f => `<option value="${f}">${f}</option>`).join('');
+            }
+            if (reflSelect) {
+                reflSelect.innerHTML = '<option value="">None (Standard)</option>' + 
+                                     data.reflectors.map(f => `<option value="${f}">${f}</option>`).join('');
+            }
+        }
+    } catch (e) { console.error("File list fetch failed", e); }
+}
+
+function populateMethods() {
+    const methodSelect = document.getElementById('method');
+    if (!methodSelect) return;
+
+    const l7 = ["CFB", "BYPASS", "GET", "POST", "OVH", "STRESS", "DYN", "SLOW", "HEAD", "NULL", "COOKIE", "PPS", "EVEN", "GSB", "DGB", "AVB", "CFBUAM", "APACHE", "XMLRPC", "BOT", "BOMB", "DOWNLOADER", "KILLER", "TOR", "RHEX", "STOMP"];
+    const l4 = ["TCP", "UDP", "SYN", "VSE", "MINECRAFT", "MCBOT", "CONNECTION", "CPS", "FIVEM", "FIVEM-TOKEN", "TS3", "MCPE", "ICMP", "OVH-UDP"];
+
+    methodSelect.innerHTML = `
+        <optgroup label="Layer 7 (Web / App)">
+            ${l7.map(m => `<option value="${m}" ${m === 'GET' ? 'selected' : ''}>${m}</option>`).join('')}
+        </optgroup>
+        <optgroup label="Layer 4 (Transport / Network)">
+            ${l4.map(m => `<option value="${m}">${m}</option>`).join('')}
+        </optgroup>
+    `;
+}
+
 // WebSocket Orchestration
 const socket = new SocketManager('/ws/logs', (data) => {
     if (data.type === 'log') {
@@ -72,7 +118,6 @@ const socket = new SocketManager('/ws/logs', (data) => {
         telemetry.updateTask(data.task_id, data);
         const agg = telemetry.getAggregate();
         
-        // Update DOM elements for global metrics
         const elements = {
             'current-rps': (val) => helpers.formatHuman(val),
             'peak-rps': (val) => helpers.formatHuman(val),
@@ -87,7 +132,6 @@ const socket = new SocketManager('/ws/logs', (data) => {
             if (el) el.innerText = formatter(agg[id] || 0);
         });
 
-        // Update Charts
         mainChart.update(agg);
 
         window.dispatchEvent(new CustomEvent('telemetry-update', {
@@ -101,5 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.connect();
     uiProMax.init();
     tasks.startPolling();
-    showToast('MHDDoS PRO Core Linked', 'success');
+    populateMethods();
+    populateFileLists();
+    showToast('MHDDoS PRO Operational', 'success');
 });

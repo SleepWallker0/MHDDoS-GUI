@@ -1,8 +1,32 @@
-import { apiRequest } from './api.js';
+import { apiRequest } from '../core/api.js';
 import { showToast } from '../ui/toast.js';
 import { uiProMax } from '../ui/ui-pro-max.js';
 
 let isRunning = false;
+
+/**
+ * Normalizes a URL or IP to ensure it's in the format start.py expects.
+ */
+function normalizeTarget(target, port, method) {
+    if (!target) return "";
+    let clean = target.trim();
+    
+    // Auto-detect if we should add http://
+    const isLayer7 = !['TCP', 'UDP', 'SYN', 'ICMP', 'VSE', 'MINECRAFT', 'MCBOT', 'CONNECTION', 'CPS', 'FIVEM', 'FIVEM-TOKEN', 'TS3', 'MCPE', 'OVH-UDP'].includes(method);
+    
+    if (isLayer7 && !clean.startsWith('http')) {
+        clean = 'http://' + clean;
+    }
+    
+    // If port is specified, append it (only if not already there)
+    if (port && !clean.includes(':', clean.indexOf('//') + 3)) {
+        // Strip trailing slash if present
+        if (clean.endsWith('/')) clean = clean.slice(0, -1);
+        clean = `${clean}:${port}`;
+    }
+    
+    return clean;
+}
 
 export async function handleMainAction() {
     if (isRunning) {
@@ -25,8 +49,11 @@ export async function handleMainAction() {
         return;
     }
 
-    const target = document.getElementById('target').value;
+    const rawTarget = document.getElementById('target').value;
     const method = document.getElementById('method').value;
+    const port = document.getElementById('port')?.value;
+    
+    const target = normalizeTarget(rawTarget, port, method);
     const threads = parseInt(document.getElementById('threads')?.value || '100');
     const duration = parseInt(document.getElementById('duration')?.value || '3600');
     const rpc = parseInt(document.getElementById('rpc')?.value || '100');
@@ -43,11 +70,12 @@ export async function handleMainAction() {
     const autoscale = document.getElementById('autoscale')?.checked || false;
     const evasion = document.getElementById('evasion')?.checked || false;
     const distribute_to_workers = document.getElementById('distribute_to_workers')?.checked || false;
+    const debug_mode = document.getElementById('debug_mode')?.checked || false;
 
-    if (!target) return showToast("Target required.", "warning");
+    if (!rawTarget) return showToast("Target vector required.", "warning");
 
     uiProMax.setAppState('starting');
-    showToast(`Initiating ${method} against ${target}`, "info");
+    showToast(`Initiating ${method} sequence...`, "info");
 
     try {
         const payload = {
@@ -64,7 +92,8 @@ export async function handleMainAction() {
             smart_rpc,
             autoscale,
             evasion,
-            distribute_to_workers
+            distribute_to_workers,
+            debug_mode
         };
 
         const data = await apiRequest('/api/attack/start', payload);
@@ -94,6 +123,10 @@ export async function analyzeTarget() {
         if (data.status === 'success') {
             document.getElementById('method').value = data.recommendation;
             showToast(`Target identified. Recommended: ${data.recommendation}`, "success");
+            
+            // Auto-fill port if standard
+            if (data.status_code === 443) document.getElementById('port').value = "443";
+            else if (data.status_code === 80) document.getElementById('port').value = "80";
         }
     } catch (e) {
         showToast("Reconnaissance failed.", "error");

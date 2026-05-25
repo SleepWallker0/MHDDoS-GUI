@@ -52,33 +52,23 @@
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
         @keyframes pulse-cyan { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .status-pulse { animation: pulse-cyan 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-        .switch { position: relative; display: inline-block; width: 32px; height: 18px; }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #334155; transition: .4s; border-radius: 18px; }
-        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
-        input:checked + .slider { background-color: #06b6d4; }
-        input:checked + .slider:before { transform: translateX(14px); }
     </style>
 </head>
-<body class="bg-surface text-on-surface font-body">
-    <!-- Sidebar -->
+<body class="bg-surface text-on-surface font-body min-h-screen">
+    <!-- Sidebar (Fixed) -->
     <aside class="flex flex-col h-screen w-64 fixed left-0 top-0 border-r border-outline-variant bg-surface z-50">
         <div class="py-6 px-6">
             <h1 class="text-xl font-headline font-black tracking-tighter text-primary">MHDDoS PRO</h1>
-            <p class="text-[10px] font-mono text-on-surface-variant/60 tracking-widest uppercase mt-1">V3.0.0 Refined</p>
+            <p class="text-[10px] font-mono text-on-surface-variant/60 tracking-widest uppercase mt-1">V3.2.0 Active</p>
         </div>
         <nav class="flex-1 px-4 space-y-1">
             <button id="tab-nav-dashboard" onclick="switchMainView('dashboard')" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-primary font-bold bg-primary/10 border-r-2 border-primary transition-colors">
                 <span class="material-symbols-outlined">dashboard</span>
                 <span class="text-sm">Dashboard</span>
             </button>
-            <button onclick="switchMainView('dashboard')" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">
+            <button onclick="scrollToConfig()" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">
                 <span class="material-symbols-outlined">settings_suggest</span>
                 <span class="text-sm">Attack Config</span>
-            </button>
-            <button onclick="switchMainView('dashboard')" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">
-                <span class="material-symbols-outlined">target</span>
-                <span class="text-sm">Targets</span>
             </button>
             <button onclick="openToolsModal()" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">
                 <span class="material-symbols-outlined">build</span>
@@ -86,182 +76,147 @@
             </button>
             <button id="tab-nav-history" onclick="switchMainView('history')" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">
                 <span class="material-symbols-outlined">list_alt</span>
-                <span class="text-sm">Logs</span>
+                <span class="text-sm">Mission Archive</span>
             </button>
         </nav>
-        <div class="p-4 space-y-4">
-            <button id="deploy-hub-btn" onclick="handleMainAction()" class="w-full bg-primary text-on-primary font-bold py-3 rounded-lg flex items-center justify-center gap-2 active:opacity-80 transition-all uppercase tracking-tight text-sm shadow-[0_0_20px_rgba(6,182,212,0.3)]">
+        <div class="p-4 space-y-4 pb-8">
+            <button id="deploy-hub-btn" onclick="handleMainAction()" class="w-full bg-primary text-on-primary font-bold py-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all uppercase tracking-tight text-sm shadow-[0_0_30px_rgba(6,182,212,0.3)]">
                 <span id="deploy-hub-icon" class="material-symbols-outlined text-sm">play_arrow</span>
                 <span id="deploy-hub-text">Start Attack</span>
             </button>
             <div class="pt-4 border-t border-outline-variant space-y-1">
+                <button onclick="openConfigModal()" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">
+                    <span class="material-symbols-outlined">dataset</span>
+                    <span class="text-sm">Proxies</span>
+                </button>
                 <button onclick="openSettingsModal()" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">
                     <span class="material-symbols-outlined">settings</span>
                     <span class="text-sm">Settings</span>
-                </button>
-                <button onclick="window.open('https://github.com/MHProDev/MHDDoS/wiki', '_blank')" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">
-                    <span class="material-symbols-outlined">menu_book</span>
-                    <span class="text-sm">Docs</span>
                 </button>
             </div>
         </div>
     </aside>
 
-    <!-- Main Content -->
-    <main class="ml-64 min-h-screen flex flex-col">
-        <header class="flex justify-between items-center px-8 h-16 sticky top-0 z-40 bg-surface/80 backdrop-blur-md border-b border-outline-variant">
+    <!-- Main Content (Scrollable) -->
+    <main class="ml-64 min-h-screen flex flex-col overflow-y-auto">
+        <header class="flex justify-between items-center px-8 h-16 sticky top-0 z-40 bg-surface/80 backdrop-blur-md border-b border-outline-variant shrink-0">
             <div class="flex items-center flex-1 max-w-xl">
                 <div class="relative w-full">
                     <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
-                    <input class="w-full bg-surface-container-high border-none rounded-lg pl-10 pr-4 py-2 text-sm text-on-surface focus:ring-1 focus:ring-primary/50" placeholder="Search tasks, logs, nodes..." type="text"/>
+                    <input class="w-full bg-surface-container-high border-none rounded-lg pl-10 pr-4 py-2 text-sm text-on-surface focus:ring-1 focus:ring-primary/50" placeholder="Filter nodes, logs, targets..." type="text"/>
                 </div>
             </div>
             <div class="flex items-center gap-4">
                 <div class="text-right mr-4 hidden md:block">
-                    <p class="text-[10px] font-mono text-on-surface-variant/50 uppercase tracking-widest">System Status</p>
-                    <p class="text-xs font-bold text-primary">OPERATIONAL</p>
+                    <p class="text-[10px] font-mono text-on-surface-variant/50 uppercase tracking-widest">Master Node</p>
+                    <p class="text-xs font-bold text-primary tracking-widest">AUTHORIZED</p>
                 </div>
-                <div class="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-xs font-bold">AD</div>
+                <div class="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-xs font-bold">PR</div>
             </div>
         </header>
 
-        <div id="view-dashboard" class="p-8 flex-1 overflow-y-auto custom-scrollbar">
-            <div class="flex flex-col lg:flex-row gap-8">
-                <!-- Left Column -->
-                <div class="w-full lg:w-1/4 space-y-6">
-                    <div class="glass-card p-6 rounded-xl space-y-6">
+        <div id="view-dashboard" class="p-8 space-y-8 flex-grow">
+            <div id="config-section" class="flex flex-col lg:flex-row gap-8">
+                <!-- Left Column: Config -->
+                <div class="w-full lg:w-1/3 space-y-6">
+                    <div class="glass-card p-6 rounded-2xl space-y-6 border border-primary/10">
                         <div class="flex items-center justify-between">
                             <h2 class="font-headline font-bold text-lg text-primary flex items-center gap-2">
-                                <span class="material-symbols-outlined">settings_suggest</span> Config
+                                <span class="material-symbols-outlined">settings_suggest</span> Attack Parameters
                             </h2>
                             <span id="connection-status-dot" class="w-2 h-2 rounded-full bg-primary status-pulse"></span>
                         </div>
                         <div class="space-y-4">
-                            <div class="space-y-1">
-                                <label class="text-[10px] font-mono uppercase tracking-tight text-on-surface-variant/70">Target Vector</label>
-                                <input id="target" class="w-full bg-black/30 border border-outline-variant rounded px-3 py-2 font-mono text-xs text-on-surface focus:border-primary outline-none" placeholder="https://example.com" type="text"/>
+                            <div class="flex gap-3">
+                                <div class="flex-grow space-y-1">
+                                    <label class="text-[10px] font-mono uppercase text-on-surface-variant/70">Destination URL/IP</label>
+                                    <input id="target" class="w-full bg-black/40 border border-outline-variant rounded-lg px-3 py-2.5 font-mono text-xs text-on-surface focus:border-primary outline-none transition-colors" placeholder="https://example.com" type="text"/>
+                                </div>
+                                <div class="w-24 space-y-1">
+                                    <label class="text-[10px] font-mono uppercase text-on-surface-variant/70">Port</label>
+                                    <input id="port" class="w-full bg-black/40 border border-outline-variant rounded-lg px-3 py-2.5 font-mono text-xs text-on-surface focus:border-primary outline-none transition-colors" placeholder="80" type="number"/>
+                                </div>
                             </div>
                             <div class="space-y-1">
                                 <div class="flex justify-between items-center">
-                                    <label class="text-[10px] font-mono uppercase tracking-tight text-on-surface-variant/70">Protocol Method</label>
-                                    <button onclick="analyzeTarget()" class="text-[9px] text-primary hover:underline flex items-center gap-1">
-                                        <span class="material-symbols-outlined text-[12px]">auto_fix_high</span> Auto-Detect
+                                    <label class="text-[10px] font-mono uppercase text-on-surface-variant/70">Protocol Method</label>
+                                    <button onclick="analyzeTarget()" class="text-[9px] text-primary hover:underline flex items-center gap-1 font-bold">
+                                        <span class="material-symbols-outlined text-[12px]">auto_fix_high</span> AUTO_RECON
                                     </button>
                                 </div>
-                                <select id="method" class="w-full bg-black/30 border border-outline-variant rounded px-3 py-2 font-mono text-xs text-on-surface focus:border-primary outline-none appearance-none cursor-pointer">
-                                    <optgroup label="Layer 7 Methods">
-                                        <option value="CFB">CFB (Cloudflare Bypass)</option>
-                                        <option value="BYPASS">BYPASS (General Bypass)</option>
-                                        <option value="GET" selected>GET (Standard GET)</option>
-                                        <option value="POST">POST (Data Flood)</option>
-                                        <option value="OVH">OVH (OVH Mitigation Bypass)</option>
-                                        <option value="STRESS">STRESS (Server Stress)</option>
-                                        <option value="DYN">DYN (Dynamic Request)</option>
-                                        <option value="SLOW">SLOW (Slowloris)</option>
-                                        <option value="HEAD">HEAD (Head Only)</option>
-                                        <option value="NULL">NULL (Null Payload)</option>
-                                        <option value="COOKIE">COOKIE (Cookie Flood)</option>
-                                        <option value="PPS">PPS (Packet Per Second)</option>
-                                        <option value="EVEN">EVEN (Even Distribution)</option>
-                                        <option value="GSB">GSB (Google Safe Browsing)</option>
-                                        <option value="DGB">DGB (DDoS Guard Bypass)</option>
-                                        <option value="AVB">AVB (Arvan Cloud Bypass)</option>
-                                        <option value="CFBUAM">CFBUAM (CF UAM Bypass)</option>
-                                        <option value="APACHE">APACHE (Apache Killer)</option>
-                                        <option value="XMLRPC">XMLRPC (XML-RPC Pingback)</option>
-                                        <option value="BOT">BOT (Bot Imitation)</option>
-                                        <option value="BOMB">BOMB (Compression Bomb)</option>
-                                        <option value="DOWNLOADER">DOWNLOADER (Heavy Downloader)</option>
-                                        <option value="KILLER">KILLER (Connection Killer)</option>
-                                        <option value="TOR">TOR (Tor Network)</option>
-                                        <option value="RHEX">RHEX (R-Hex Engine)</option>
-                                        <option value="STOMP">STOMP (STOMP Protocol)</option>
-                                    </optgroup>
-                                    <optgroup label="Layer 4 Methods">
-                                        <option value="TCP">TCP (TCP Flood)</option>
-                                        <option value="UDP">UDP (UDP Flood)</option>
-                                        <option value="SYN">SYN (SYN Flood)</option>
-                                        <option value="VSE">VSE (Valve Source Engine)</option>
-                                        <option value="MINECRAFT">MINECRAFT (Minecraft Query)</option>
-                                        <option value="MCBOT">MCBOT (Minecraft Bot)</option>
-                                        <option value="CONNECTION">CONNECTION (Max Connections)</option>
-                                        <option value="CPS">CPS (Connections Per Second)</option>
-                                        <option value="FIVEM">FIVEM (FiveM Server)</option>
-                                        <option value="FIVEM-TOKEN">FIVEM-TOKEN (FiveM Token)</option>
-                                        <option value="TS3">TS3 (Teamspeak 3)</option>
-                                        <option value="MCPE">MCPE (Minecraft PE)</option>
-                                        <option value="ICMP">ICMP (ICMP Echo)</option>
-                                        <option value="OVH-UDP">OVH-UDP (OVH UDP Bypass)</option>
-                                    </optgroup>
+                                <select id="method" class="w-full bg-black/40 border border-outline-variant rounded-lg px-3 py-2.5 font-mono text-xs text-on-surface focus:border-primary outline-none appearance-none cursor-pointer">
+                                    <!-- Populated via script -->
                                 </select>
                             </div>
                             <div class="space-y-3">
                                 <div class="flex justify-between items-center">
-                                    <label class="text-[10px] font-mono uppercase tracking-widest text-on-surface-variant">Workers</label>
-                                    <input id="threads" class="w-16 bg-black/30 border border-outline-variant rounded px-2 py-1 text-xs text-primary text-center outline-none" type="number" value="100"/>
+                                    <label class="text-[10px] font-mono uppercase tracking-widest text-on-surface-variant">Worker Threads</label>
+                                    <input id="threads" class="w-20 bg-black/40 border border-outline-variant rounded-lg px-2 py-1 text-xs text-primary font-bold text-center outline-none" type="number" value="100"/>
                                 </div>
-                                <input class="w-full h-1 bg-outline-variant rounded-lg appearance-none cursor-pointer accent-primary" type="range" min="1" max="10000" value="100" oninput="document.getElementById('threads').value = this.value"/>
+                                <input id="threads-slider" class="w-full h-1 bg-outline-variant rounded-lg appearance-none cursor-pointer accent-primary" type="range" min="1" max="10000" value="100" oninput="document.getElementById('threads').value = this.value"/>
                             </div>
+                            
                             <div class="border-t border-outline-variant pt-4">
-                                <button onclick="toggleAdvancedSettings()" class="w-full flex items-center justify-between text-primary focus:outline-none">
-                                    <span class="text-[10px] font-mono uppercase tracking-widest font-bold">Advanced Parameters</span>
+                                <button onclick="toggleAdvancedSettings()" class="w-full flex items-center justify-between text-primary/80 hover:text-primary transition-all">
+                                    <span class="text-[10px] font-mono uppercase tracking-[0.2em] font-black">Advanced Matrix</span>
                                     <span id="advanced-settings-icon" class="material-symbols-outlined text-sm transition-transform">expand_more</span>
                                 </button>
                                 <div id="advanced-settings-container" class="mt-4 space-y-4 hidden">
                                     <div class="grid grid-cols-2 gap-4">
                                         <div class="space-y-1">
                                             <label class="text-[9px] font-mono uppercase text-on-surface-variant/70">Duration (s)</label>
-                                            <input id="duration" class="w-full bg-black/30 border border-outline-variant rounded px-2 py-1.5 text-xs text-on-surface outline-none focus:border-primary" type="number" value="3600"/>
+                                            <input id="duration" class="w-full bg-black/40 border border-outline-variant rounded-md px-2 py-1.5 text-xs text-on-surface outline-none" type="number" value="3600"/>
                                         </div>
                                         <div class="space-y-1">
                                             <label class="text-[9px] font-mono uppercase text-on-surface-variant/70">RPC Limit</label>
-                                            <input id="rpc" class="w-full bg-black/30 border border-outline-variant rounded px-2 py-1.5 text-xs text-on-surface outline-none focus:border-primary" type="number" value="100"/>
+                                            <input id="rpc" class="w-full bg-black/40 border border-outline-variant rounded-md px-2 py-1.5 text-xs text-on-surface outline-none" type="number" value="100"/>
                                         </div>
                                     </div>
                                     <div class="grid grid-cols-2 gap-4">
                                         <div class="space-y-1">
-                                            <label class="text-[9px] font-mono uppercase text-on-surface-variant/70">Proxy Type</label>
-                                            <select id="proxy_type" class="w-full bg-black/30 border border-outline-variant rounded px-2 py-1.5 text-xs text-on-surface outline-none appearance-none cursor-pointer focus:border-primary">
-                                                <option value="SOCKS5">SOCKS5</option>
-                                                <option value="HTTP">HTTP</option>
-                                                <option value="ALL">ALL</option>
-                                                <option value="RANDOM">RANDOM</option>
+                                            <label class="text-[9px] font-mono uppercase text-on-surface-variant/70">Proxy Matrix</label>
+                                            <select id="proxy_type" class="w-full bg-black/40 border border-outline-variant rounded-md px-2 py-1.5 text-[10px] text-on-surface outline-none appearance-none cursor-pointer">
+                                                <option value="SOCKS5">SOCKS5</option><option value="HTTP">HTTP</option><option value="ALL">ALL</option><option value="RANDOM">RANDOM</option>
                                             </select>
                                         </div>
                                         <div class="space-y-1">
                                             <label class="text-[9px] font-mono uppercase text-on-surface-variant/70">Refresh (s)</label>
-                                            <input id="proxy_refresh" class="w-full bg-black/30 border border-outline-variant rounded px-2 py-1.5 text-xs text-on-surface outline-none focus:border-primary" type="number" value="0"/>
+                                            <input id="proxy_refresh" class="w-full bg-black/40 border border-outline-variant rounded-md px-2 py-1.5 text-xs text-on-surface outline-none" type="number" value="0"/>
                                         </div>
                                     </div>
                                     <div class="space-y-1">
-                                        <label class="text-[9px] font-mono uppercase text-on-surface-variant/70">Proxy List / Reflector</label>
-                                        <div class="grid grid-cols-2 gap-2">
-                                            <input id="proxy_list" class="w-full bg-black/30 border border-outline-variant rounded px-2 py-1.5 text-xs text-on-surface outline-none focus:border-primary" type="text" placeholder="proxies.txt"/>
-                                            <input id="reflector" class="w-full bg-black/30 border border-outline-variant rounded px-2 py-1.5 text-xs text-on-surface outline-none focus:border-primary" type="text" placeholder="reflector.txt"/>
-                                        </div>
+                                        <label class="text-[9px] font-mono uppercase text-on-surface-variant/70">Proxy Source</label>
+                                        <select id="proxy_list" class="w-full bg-black/40 border border-outline-variant rounded-md px-2 py-1.5 text-[10px] text-on-surface outline-none cursor-pointer">
+                                            <option value="">default.txt</option>
+                                        </select>
                                     </div>
-                                    <div class="pt-2 space-y-2">
-                                        <p class="text-[9px] font-mono uppercase text-on-surface-variant/50 border-b border-outline-variant pb-1">Protocol Modifiers</p>
-                                        <div class="grid grid-cols-2 gap-x-4 gap-y-2">
-                                            <label class="flex items-center justify-between cursor-pointer group">
-                                                <span class="text-[10px] text-on-surface-variant group-hover:text-on-surface transition-colors">Auto Harvest</span>
-                                                <input type="checkbox" id="auto_harvest" class="rounded border-outline-variant bg-black/30 text-primary focus:ring-0 focus:ring-offset-0"/>
+                                    <div class="space-y-1">
+                                        <label class="text-[9px] font-mono uppercase text-on-surface-variant/70">Reflector Matrix</label>
+                                        <select id="reflector" class="w-full bg-black/40 border border-outline-variant rounded-md px-2 py-1.5 text-[10px] text-on-surface outline-none cursor-pointer">
+                                            <option value="">None (Standard)</option>
+                                        </select>
+                                    </div>
+                                    <div class="pt-2 space-y-2 border-t border-outline-variant/30">
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <label class="flex items-center justify-between p-2 bg-black/20 rounded border border-outline-variant/50 cursor-pointer">
+                                                <span class="text-[9px] font-mono uppercase text-on-surface-variant">Auto Harvest</span>
+                                                <input type="checkbox" id="auto_harvest" class="rounded text-primary focus:ring-0 bg-transparent border-outline-variant"/>
                                             </label>
-                                            <label class="flex items-center justify-between cursor-pointer group">
-                                                <span class="text-[10px] text-on-surface-variant group-hover:text-on-surface transition-colors">Smart RPC</span>
-                                                <input type="checkbox" id="smart_rpc" class="rounded border-outline-variant bg-black/30 text-primary focus:ring-0 focus:ring-offset-0"/>
+                                            <label class="flex items-center justify-between p-2 bg-black/20 rounded border border-outline-variant/50 cursor-pointer">
+                                                <span class="text-[9px] font-mono uppercase text-on-surface-variant">Smart RPC</span>
+                                                <input type="checkbox" id="smart_rpc" class="rounded text-primary focus:ring-0 bg-transparent border-outline-variant"/>
                                             </label>
-                                            <label class="flex items-center justify-between cursor-pointer group">
-                                                <span class="text-[10px] text-on-surface-variant group-hover:text-on-surface transition-colors">Auto Scale</span>
-                                                <input type="checkbox" id="autoscale" class="rounded border-outline-variant bg-black/30 text-primary focus:ring-0 focus:ring-offset-0"/>
+                                            <label class="flex items-center justify-between p-2 bg-black/20 rounded border border-outline-variant/50 cursor-pointer">
+                                                <span class="text-[9px] font-mono uppercase text-on-surface-variant">Auto Scale</span>
+                                                <input type="checkbox" id="autoscale" class="rounded text-primary focus:ring-0 bg-transparent border-outline-variant"/>
                                             </label>
-                                            <label class="flex items-center justify-between cursor-pointer group">
-                                                <span class="text-[10px] text-on-surface-variant group-hover:text-on-surface transition-colors">Advanced Evasion</span>
-                                                <input type="checkbox" id="evasion" class="rounded border-outline-variant bg-black/30 text-primary focus:ring-0 focus:ring-offset-0"/>
+                                            <label class="flex items-center justify-between p-2 bg-black/20 rounded border border-outline-variant/50 cursor-pointer">
+                                                <span class="text-[9px] font-mono uppercase text-on-surface-variant">Evasion</span>
+                                                <input type="checkbox" id="evasion" class="rounded text-primary focus:ring-0 bg-transparent border-outline-variant"/>
                                             </label>
-                                            <label class="flex items-center justify-between cursor-pointer group col-span-2 pt-1">
-                                                <span class="text-[10px] text-on-surface-variant group-hover:text-on-surface transition-colors">Distribute to Workers</span>
-                                                <input type="checkbox" id="distribute_to_workers" class="rounded border-outline-variant bg-black/30 text-primary focus:ring-0 focus:ring-offset-0"/>
+                                            <label class="col-span-2 flex items-center justify-between p-2 bg-black/20 rounded border border-outline-variant/50 cursor-pointer">
+                                                <span class="text-[9px] font-mono uppercase text-on-surface-variant font-bold">Verbose Debug Output</span>
+                                                <input type="checkbox" id="debug_mode" class="rounded text-primary focus:ring-0 bg-transparent border-outline-variant"/>
                                             </label>
                                         </div>
                                     </div>
@@ -271,69 +226,77 @@
                     </div>
                 </div>
 
-                <!-- Right Column -->
-                <div class="w-full lg:w-3/4 space-y-6">
+                <!-- Right Column: Data Visualization -->
+                <div class="w-full lg:w-2/3 space-y-6">
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div class="glass-card p-4 rounded-xl border-l-2 border-primary">
-                            <p class="text-[9px] font-mono uppercase text-on-surface-variant">Throughput</p>
-                            <h4 id="current-bps" class="text-xl font-mono font-bold text-on-surface mt-1">0 B/s</h4>
-                            <p id="peak-bps" class="text-[8px] font-mono text-on-surface-variant/50 uppercase mt-1">Peak: 0 B/s</p>
+                        <div class="glass-card p-5 rounded-2xl border-l-4 border-primary shadow-lg">
+                            <p class="text-[10px] font-mono uppercase text-on-surface-variant font-bold">Throughput</p>
+                            <h4 id="current-bps" class="text-2xl font-mono font-black text-on-surface mt-1">0 B/s</h4>
+                            <p id="peak-bps" class="text-[9px] font-mono text-on-surface-variant/40 mt-1 italic">PEAK: 0 B/s</p>
                         </div>
-                        <div class="glass-card p-4 rounded-xl border-l-2 border-primary/40">
-                            <p class="text-[9px] font-mono uppercase text-on-surface-variant">Latency</p>
-                            <h4 id="current-latency" class="text-xl font-mono font-bold text-on-surface mt-1">0ms</h4>
-                            <p id="peak-latency" class="text-[8px] font-mono text-on-surface-variant/50 uppercase mt-1">Peak: 0ms</p>
+                        <div class="glass-card p-5 rounded-2xl border-l-4 border-primary/30 shadow-lg">
+                            <p class="text-[10px] font-mono uppercase text-on-surface-variant font-bold">Latency</p>
+                            <h4 id="current-latency" class="text-2xl font-mono font-black text-on-surface mt-1">0ms</h4>
+                            <p id="peak-latency" class="text-[9px] font-mono text-on-surface-variant/40 mt-1 italic">PEAK: 0ms</p>
                         </div>
-                        <div class="glass-card p-4 rounded-xl border-l-2 border-primary/40">
-                            <p class="text-[9px] font-mono uppercase text-on-surface-variant">Fleet Size</p>
-                            <h4 id="current-threads" class="text-xl font-mono font-bold text-on-surface mt-1">0</h4>
-                            <p id="peak-threads" class="text-[8px] font-mono text-on-surface-variant/50 uppercase mt-1">Peak: 0</p>
+                        <div class="glass-card p-5 rounded-2xl border-l-4 border-primary/30 shadow-lg">
+                            <p class="text-[10px] font-mono uppercase text-on-surface-variant font-bold">Fleet Size</p>
+                            <h4 id="current-threads" class="text-2xl font-mono font-black text-on-surface mt-1">0</h4>
+                            <p id="peak-threads" class="text-[9px] font-mono text-on-surface-variant/40 mt-1 italic">PEAK: 0</p>
                         </div>
-                        <div class="glass-card p-4 rounded-xl border-l-2 border-primary/40">
-                            <p class="text-[9px] font-mono uppercase text-on-surface-variant">Active Tasks</p>
-                            <h4 id="active-tasks-count" class="text-xl font-mono font-bold text-on-surface mt-1">0</h4>
-                            <p class="text-[8px] font-mono text-primary mt-1 uppercase">Stable</p>
+                        <div class="glass-card p-5 rounded-2xl border-l-4 border-primary/30 shadow-lg">
+                            <p class="text-[10px] font-mono uppercase text-on-surface-variant font-bold">Active Jobs</p>
+                            <h4 id="active-tasks-count" class="text-2xl font-mono font-black text-on-surface mt-1 text-primary">0</h4>
+                            <p class="text-[9px] font-mono text-primary/60 mt-1 uppercase font-black">Stable</p>
                         </div>
                     </div>
 
-                    <div class="glass-card p-6 rounded-xl">
-                        <h3 class="font-headline font-bold text-on-surface-variant uppercase tracking-widest text-xs mb-6">
-                            Network Velocity <span id="current-rps" class="ml-2 text-primary">0</span> RPS (Peak: <span id="peak-rps">0</span>)
+                    <div class="glass-card p-8 rounded-2xl shadow-xl">
+                        <h3 class="font-headline font-black text-on-surface-variant uppercase tracking-widest text-[11px] mb-6 flex items-center justify-between">
+                            Network Velocity Tracking
+                            <span class="text-primary font-mono"><span id="current-rps">0</span> RPS / <span id="peak-rps">0</span> MAX</span>
                         </h3>
-                        <div class="h-64 relative">
+                        <div class="h-72 relative">
                             <canvas id="networkVelocityChart"></canvas>
                         </div>
                     </div>
 
-                    <div class="glass-card p-6 rounded-xl">
-                        <h3 class="font-headline font-bold text-on-surface-variant uppercase tracking-widest text-xs mb-4">Active Deployments</h3>
+                    <div class="glass-card p-6 rounded-2xl shadow-xl">
+                        <h3 class="font-headline font-black text-on-surface-variant uppercase tracking-widest text-[11px] mb-4">Active Deployments</h3>
                         <div id="tasks-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <!-- Active tasks rendered here -->
+                            <!-- Tasks populated via Polling -->
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-12">
-                        <div class="glass-card rounded-xl overflow-hidden flex flex-col h-80">
-                            <div class="bg-surface-container-high px-4 py-2 border-b border-outline-variant flex items-center justify-between">
-                                <span class="text-[10px] font-mono text-on-surface-variant uppercase tracking-widest">Real-time Terminal</span>
-                                <div class="flex items-center gap-2">
-                                    <select id="log-level-selector" onchange="setLogLevel(this.value)" class="bg-black/40 border border-outline-variant rounded px-2 py-0.5 text-[8px] font-bold text-on-surface-variant outline-none">
-                                        <option>INFO_STANDARD</option><option>DEBUG_VERBOSE</option><option>SUCCESS_ONLY</option><option>ERROR_ONLY</option>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-20">
+                        <!-- Terminal -->
+                        <div class="glass-card rounded-2xl overflow-hidden flex flex-col h-[400px] border border-outline-variant/30">
+                            <div class="bg-surface-container-high/50 backdrop-blur px-5 py-3 border-b border-outline-variant flex items-center justify-between">
+                                <span class="text-[10px] font-mono text-on-surface font-black uppercase tracking-[0.2em]">Deployment_Console</span>
+                                <div class="flex items-center gap-3">
+                                    <select id="log-level-selector" onchange="setLogLevel(this.value)" class="bg-black/60 border border-outline-variant rounded px-2 py-1 text-[9px] font-black text-primary/80 outline-none cursor-pointer">
+                                        <option value="INFO_STANDARD">INFO_STD</option>
+                                        <option value="DEBUG_VERBOSE">DEBUG_FULL</option>
+                                        <option value="SUCCESS_ONLY">SUCCESS_ONLY</option>
+                                        <option value="ERROR_ONLY">ERRORS_ONLY</option>
                                     </select>
-                                    <div class="flex gap-1.5 ml-2 border-l border-outline-variant pl-3">
-                                        <button onclick="toggleTerminalScroll()" class="text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined text-sm">pause</span></button>
-                                        <button onclick="clearTerminal()" class="text-on-surface-variant hover:text-error transition-colors"><span class="material-symbols-outlined text-sm">delete</span></button>
-                                        <button onclick="copyLogs()" class="text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined text-sm">download</span></button>
+                                    <div class="flex gap-2 ml-2 border-l border-outline-variant pl-4">
+                                        <button onclick="toggleTerminalScroll()" class="text-on-surface-variant hover:text-primary transition-all active:scale-90" title="Pause Stream"><span class="material-symbols-outlined text-lg">pause</span></button>
+                                        <button onclick="clearTerminal()" class="text-on-surface-variant hover:text-error transition-all active:scale-90" title="Purge Buffer"><span class="material-symbols-outlined text-lg">delete_sweep</span></button>
+                                        <button onclick="copyLogs()" class="text-on-surface-variant hover:text-primary transition-all active:scale-90" title="Extract Log"><span class="material-symbols-outlined text-lg">content_copy</span></button>
                                     </div>
                                 </div>
                             </div>
-                            <div id="terminal-content" class="p-4 font-mono text-[11px] leading-relaxed overflow-y-auto custom-scrollbar flex-1 bg-black/40"></div>
+                            <div id="terminal-content" class="p-6 font-mono text-[12px] leading-relaxed overflow-y-auto custom-scrollbar flex-1 bg-black/30">
+                                <!-- Logs will stream here -->
+                            </div>
                         </div>
-                        <div class="glass-card rounded-xl overflow-hidden relative h-80">
-                            <img alt="Map" class="w-full h-full object-cover opacity-30 grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBHwWR9Oy6NvJ3MnCfzqQRE0UxlCSPraCgyl6FUHMX_2cnMGIDiEq2Qird-CeRqenH-NOT8YrKz0u3L3YIg61DHXtf2iju7-Ch9FcitkoHe9GONeYUFhowzDlxoCodyb3Och2b2STQhu62SJFDmvWxbkqP2Qm_m1Xpg6s3Y-975TEwLY24vZac5PWqBggN0qPvXtbkyRZecVnzymYH16VwOVIh0tl0lmKJ6Cy-hvq3qUm4rd2cx95s-Bo5Cq9q_TOYPKyQKNgxsHDIN"/>
-                            <div class="absolute inset-0 p-4 flex flex-col justify-between pointer-events-none">
-                                <div class="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded border border-outline-variant self-start">
-                                    <p class="text-[10px] font-mono text-primary font-bold">NETWORK_NODES_ACTIVE</p>
+                        <!-- Tactical Map -->
+                        <div class="glass-card rounded-2xl overflow-hidden relative h-[400px] border border-outline-variant/30">
+                            <img alt="Map" class="w-full h-full object-cover opacity-20 grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBHwWR9Oy6NvJ3MnCfzqQRE0UxlCSPraCgyl6FUHMX_2cnMGIDiEq2Qird-CeRqenH-NOT8YrKz0u3L3YIg61DHXtf2iju7-Ch9FcitkoHe9GONeYUFhowzDlxoCodyb3Och2b2STQhu62SJFDmvWxbkqP2Qm_m1Xpg6s3Y-975TEwLY24vZac5PWqBggN0qPvXtbkyRZecVnzymYH16VwOVIh0tl0lmKJ6Cy-hvq3qUm4rd2cx95s-Bo5Cq9q_TOYPKyQKNgxsHDIN"/>
+                            <div class="absolute inset-0 p-6 flex flex-col justify-between pointer-events-none">
+                                <div class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border border-outline-variant self-start">
+                                    <p class="text-[10px] font-mono text-primary font-black tracking-widest">TACTICAL_NETWORK_GRID_V4</p>
                                 </div>
                             </div>
                         </div>
@@ -342,50 +305,101 @@
             </div>
         </div>
 
-        <div id="view-history" class="p-8 flex-1 overflow-y-auto custom-scrollbar hidden">
-            <h2 class="text-xl font-headline font-black mb-6 text-primary">MISSION ARCHIVE</h2>
-            <div id="history-container" class="space-y-4"></div>
+        <div id="view-history" class="p-8 space-y-8 flex-grow hidden">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-2xl font-headline font-black text-primary tracking-tighter">MISSION ARCHIVE</h2>
+                <div class="flex gap-4">
+                    <span id="history-total-records" class="text-[10px] font-mono text-on-surface-variant border border-outline-variant px-3 py-1 rounded-full bg-black/20 uppercase tracking-widest">Loading...</span>
+                </div>
+            </div>
+            <div class="glass-card rounded-2xl overflow-hidden shadow-2xl border border-outline-variant/30">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-surface-container-high/50 border-b border-outline-variant">
+                        <tr>
+                            <th class="py-4 px-6 text-[10px] font-black uppercase text-on-surface-variant tracking-widest">Timestamp</th>
+                            <th class="py-4 px-6 text-[10px] font-black uppercase text-on-surface-variant tracking-widest">Target Vector</th>
+                            <th class="py-4 px-6 text-[10px] font-black uppercase text-on-surface-variant tracking-widest text-center">Method</th>
+                            <th class="py-4 px-6 text-[10px] font-black uppercase text-on-surface-variant tracking-widest text-right">Impact Max</th>
+                            <th class="py-4 px-6 text-[10px] font-black uppercase text-on-surface-variant tracking-widest text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table-body" class="divide-y divide-outline-variant/30 font-mono text-xs">
+                        <!-- History rows -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="flex justify-center items-center gap-6 mt-8 pb-12">
+                <button onclick="changeHistoryPage(-1)" class="p-2 rounded-full border border-outline-variant hover:bg-primary/10 hover:text-primary transition-all active:scale-90"><span class="material-symbols-outlined">chevron_left</span></button>
+                <span id="history-page-indicator" class="text-[10px] font-black font-mono tracking-[0.3em] text-on-surface-variant">PAGE 1</span>
+                <button onclick="changeHistoryPage(1)" class="p-2 rounded-full border border-outline-variant hover:bg-primary/10 hover:text-primary transition-all active:scale-90"><span class="material-symbols-outlined">chevron_right</span></button>
+            </div>
         </div>
     </main>
 
     <!-- Modals -->
-    <div id="tools-modal" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-md hidden opacity-0 transition-all duration-300">
-        <div id="tools-modal-content" class="glass-card w-full max-w-2xl rounded-xl p-6 relative translate-y-8 transition-all">
-            <button onclick="closeToolsModal()" class="absolute top-4 right-4 text-on-surface-variant hover:text-primary"><span class="material-symbols-outlined">close</span></button>
-            <div class="mb-6 flex items-center gap-3">
-                <div class="w-10 h-10 bg-primary/10 rounded flex items-center justify-center text-primary"><span class="material-symbols-outlined">construction</span></div>
-                <h2 class="text-lg font-bold text-on-surface">Diagnostic Core</h2>
+    <div id="tools-modal" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-xl hidden opacity-0 transition-all duration-300">
+        <div id="tools-modal-content" class="glass-card w-full max-w-2xl rounded-3xl p-8 relative translate-y-8 transition-all border border-primary/20 shadow-2xl">
+            <button onclick="closeToolsModal()" class="absolute top-6 right-6 text-on-surface-variant hover:text-primary transition-all"><span class="material-symbols-outlined text-2xl">close</span></button>
+            <div class="mb-8 flex items-center gap-4">
+                <div class="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary shadow-inner"><span class="material-symbols-outlined text-3xl">terminal</span></div>
+                <div>
+                    <h2 class="text-xl font-headline font-black text-on-surface tracking-tighter">Diagnostic Core</h2>
+                    <p class="text-[10px] font-mono uppercase text-on-surface-variant/60 tracking-widest">Network reconnaissance infrastructure</p>
+                </div>
             </div>
-            <div class="flex gap-1 p-1 bg-black/40 rounded mb-5 border border-outline-variant">
-                <button id="tab-ping" onclick="switchToolTab('ping')" class="tool-tab flex-1 py-2 rounded text-[10px] font-bold bg-primary/20 text-primary">PING</button>
-                <button id="tab-check" onclick="switchToolTab('check')" class="tool-tab flex-1 py-2 rounded text-[10px] font-bold text-on-surface-variant hover:text-primary">STATUS</button>
-                <button id="tab-info" onclick="switchToolTab('info')" class="tool-tab flex-1 py-2 rounded text-[10px] font-bold text-on-surface-variant hover:text-primary">GEO IP</button>
-                <button id="tab-ports" onclick="switchToolTab('ports')" class="tool-tab flex-1 py-2 rounded text-[10px] font-bold text-on-surface-variant hover:text-primary">PORTS</button>
-                <button id="tab-dns" onclick="switchToolTab('dns')" class="tool-tab flex-1 py-2 rounded text-[10px] font-bold text-on-surface-variant hover:text-primary">DNS</button>
+            <div class="flex gap-2 p-1 bg-black/40 rounded-xl mb-6 border border-outline-variant">
+                <button id="tab-ping" onclick="switchToolTab('ping')" class="tool-tab flex-1 py-2.5 rounded-lg text-[10px] font-black bg-primary/20 text-primary transition-all">PING</button>
+                <button id="tab-check" onclick="switchToolTab('check')" class="tool-tab flex-1 py-2.5 rounded-lg text-[10px] font-black text-on-surface-variant hover:text-primary transition-all">STATUS</button>
+                <button id="tab-info" onclick="switchToolTab('info')" class="tool-tab flex-1 py-2.5 rounded-lg text-[10px] font-black text-on-surface-variant hover:text-primary transition-all">GEO IP</button>
+                <button id="tab-ports" onclick="switchToolTab('ports')" class="tool-tab flex-1 py-2.5 rounded-lg text-[10px] font-black text-on-surface-variant hover:text-primary transition-all">PORTS</button>
+                <button id="tab-dns" onclick="switchToolTab('dns')" class="tool-tab flex-1 py-2.5 rounded-lg text-[10px] font-black text-on-surface-variant hover:text-primary transition-all">DNS</button>
             </div>
             <div class="space-y-4">
                 <div class="flex gap-3">
-                    <input id="tool-target" type="text" class="flex-1 bg-black/30 border border-outline-variant rounded px-4 py-2 text-xs font-mono text-primary outline-none" placeholder="Target Host">
-                    <button id="tool-exec-btn" onclick="executeTool()" class="px-6 bg-primary text-on-primary font-bold rounded text-[10px] uppercase">Initiate</button>
+                    <input id="tool-target" type="text" class="flex-1 bg-black/40 border border-outline-variant rounded-xl px-4 py-3 text-sm font-mono text-primary outline-none focus:border-primary transition-colors shadow-inner" placeholder="Target Hostname / IP">
+                    <button id="tool-exec-btn" onclick="executeTool()" class="px-8 bg-primary text-on-primary font-black rounded-xl text-xs uppercase tracking-widest hover:brightness-110 transition-all shadow-lg active:scale-95">Initiate</button>
                 </div>
-                <div id="tool-result" class="bg-black/40 border border-outline-variant rounded p-4 min-h-[200px] font-mono text-[10px] text-on-surface-variant/80 overflow-y-auto"></div>
+                <div id="tool-result" class="bg-black/60 border border-outline-variant rounded-2xl p-6 min-h-[250px] font-mono text-[11px] text-on-surface-variant/90 overflow-y-auto custom-scrollbar shadow-inner leading-relaxed">
+                    <!-- Results -->
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Other Modals (Config, Settings) remain using same pattern but with updated IDs -->
-    <div id="settings-modal" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-md hidden opacity-0 transition-all duration-300">
-        <div id="settings-modal-content" class="glass-card w-full max-w-md rounded-xl p-6 relative translate-y-8 transition-all">
-            <button onclick="closeSettingsModal()" class="absolute top-4 right-4 text-on-surface-variant hover:text-primary"><span class="material-symbols-outlined">close</span></button>
-            <div class="mb-6 flex items-center gap-3">
-                <h2 class="text-lg font-bold text-on-surface">Mission Settings</h2>
-            </div>
-            <div class="space-y-4">
-                <div class="space-y-1">
-                    <label class="text-[10px] font-mono text-on-surface-variant uppercase">Discord Webhook</label>
-                    <input id="discord_webhook" type="text" class="w-full bg-black/30 border border-outline-variant rounded px-3 py-2 text-xs font-mono text-primary outline-none">
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-xl hidden opacity-0 transition-all duration-300">
+        <div id="settings-modal-content" class="glass-card w-full max-w-md rounded-3xl p-8 relative translate-y-8 transition-all border border-primary/20 shadow-2xl">
+            <button onclick="closeSettingsModal()" class="absolute top-6 right-6 text-on-surface-variant hover:text-primary transition-all"><span class="material-symbols-outlined text-2xl">close</span></button>
+            <h2 class="text-xl font-headline font-black text-on-surface tracking-tighter mb-6 uppercase">Mission Control Settings</h2>
+            <div class="space-y-6">
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black font-mono text-on-surface-variant uppercase tracking-widest">Discord Alert Pipeline</label>
+                    <input id="discord_webhook" type="text" class="w-full bg-black/40 border border-outline-variant rounded-xl px-4 py-3 text-xs font-mono text-primary outline-none focus:border-primary transition-colors shadow-inner" placeholder="https://discord.com/api/webhooks/...">
                 </div>
-                <button onclick="saveSettings()" class="w-full bg-primary text-on-primary font-bold py-2 rounded-lg text-xs uppercase">Save Configuration</button>
+                <button onclick="saveSettings()" class="w-full bg-primary text-on-primary font-black py-4 rounded-xl text-xs uppercase tracking-widest shadow-xl hover:brightness-110 active:scale-95 transition-all">Synchronize Configurations</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Config Modal (Proxies) -->
+    <div id="config-modal" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-xl hidden opacity-0 transition-all duration-300">
+        <div id="config-modal-content" class="glass-card w-full max-w-xl rounded-3xl p-8 relative translate-y-8 transition-all border border-primary/20 shadow-2xl">
+            <button onclick="closeConfigModal()" class="absolute top-6 right-6 text-on-surface-variant hover:text-primary transition-all"><span class="material-symbols-outlined text-2xl">close</span></button>
+            <h2 class="text-xl font-headline font-black text-on-surface tracking-tighter mb-2 uppercase">Proxy Pipeline Management</h2>
+            <p class="text-[9px] font-mono text-on-surface-variant/60 uppercase tracking-[0.2em] mb-8">Define global tactical asset providers</p>
+            
+            <div id="config-sources-container" class="space-y-3 mb-8 max-h-[350px] overflow-y-auto custom-scrollbar p-1">
+                <!-- Sources -->
+            </div>
+            
+            <div class="flex items-center justify-between pt-6 border-t border-outline-variant">
+                <button onclick="addConfigSource()" class="text-[10px] font-black text-primary hover:underline flex items-center gap-2 uppercase tracking-widest">
+                    <span class="material-symbols-outlined text-lg">add_circle</span> Add Provider
+                </button>
+                <div class="flex gap-4">
+                    <button onclick="closeConfigModal()" class="px-6 py-2.5 rounded-xl text-[10px] font-black uppercase text-on-surface-variant hover:text-on-surface tracking-widest transition-colors">Discard</button>
+                    <button onclick="saveProxyConfig()" class="px-8 py-3 bg-primary/20 border border-primary/40 text-primary font-black uppercase tracking-widest rounded-xl text-[10px] hover:bg-primary hover:text-on-primary transition-all shadow-lg active:scale-95">Commit Matrix</button>
+                </div>
             </div>
         </div>
     </div>
