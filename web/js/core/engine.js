@@ -101,6 +101,7 @@ export async function handleMainAction() {
             isRunning = true;
             uiProMax.setAppState('running');
             showToast("Attack sequence authorized.", "success");
+            if (window.updateTacticalMap) window.updateTacticalMap(target);
         } else {
             isRunning = false;
             uiProMax.setAppState('idle');
@@ -127,6 +128,8 @@ export async function analyzeTarget() {
             // Auto-fill port if standard
             if (data.status_code === 443) document.getElementById('port').value = "443";
             else if (data.status_code === 80) document.getElementById('port').value = "80";
+            
+            if (window.updateTacticalMap) window.updateTacticalMap(target);
         }
     } catch (e) {
         showToast("Reconnaissance failed.", "error");

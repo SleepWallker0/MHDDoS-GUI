@@ -185,6 +185,57 @@ const socket = new SocketManager('/ws/logs', (data) => {
     }
 });
 
+let map;
+let mapMarker;
+
+window.updateTacticalMap = async function(target) {
+    if (!map || !target) return;
+    try {
+        const res = await fetch(`/api/recon/geo?target=${encodeURIComponent(target)}`);
+        const data = await res.json();
+        if (data.status === 'success' && data.lat && data.lon) {
+            const latlng = [data.lat, data.lon];
+            map.setView(latlng, 5, { animate: true, duration: 1.5 });
+            
+            if (mapMarker) {
+                mapMarker.setLatLng(latlng);
+            } else {
+                // Create a custom pulsing cyan icon
+                const icon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div class="w-4 h-4 bg-primary rounded-full shadow-[0_0_15px_#06b6d4] status-pulse"></div>`,
+                    iconSize: [16, 16],
+                    iconAnchor: [8, 8]
+                });
+                mapMarker = L.marker(latlng, { icon }).addTo(map);
+            }
+            
+            const infoText = `${data.country || 'Unknown'} - ${data.isp || 'Unknown ISP'} (${data.ip})`;
+            document.getElementById('map-target-info').innerText = `LOCKED: ${infoText}`;
+        }
+    } catch (e) {
+        console.error("Geo-IP fetch failed", e);
+    }
+};
+
+function initMap() {
+    const mapEl = document.getElementById('tactical-map');
+    if (!mapEl) return;
+    
+    // Initialize map with dark theme tiles
+    map = L.map('tactical-map', {
+        zoomControl: false,
+        attributionControl: false,
+        dragging: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false
+    }).setView([20, 0], 2);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19
+    }).addTo(map);
+}
+
 // Bootstrap
 document.addEventListener('DOMContentLoaded', () => {
     socket.connect();
@@ -192,5 +243,6 @@ document.addEventListener('DOMContentLoaded', () => {
     tasks.startPolling();
     populateMethods();
     populateFileLists();
+    initMap();
     showToast('MHDDoS PRO Operational', 'success');
 });

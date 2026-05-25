@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&family=Inter:wght@300;400;500;600;700&family=Public+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script>
         tailwind.config = {
             darkMode: "class",
@@ -290,10 +291,11 @@
                         </div>
                         <!-- Tactical Map -->
                         <div class="glass-card rounded-2xl overflow-hidden relative h-[400px] border border-outline-variant/30">
-                            <img alt="Map" class="w-full h-full object-cover opacity-20 grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBHwWR9Oy6NvJ3MnCfzqQRE0UxlCSPraCgyl6FUHMX_2cnMGIDiEq2Qird-CeRqenH-NOT8YrKz0u3L3YIg61DHXtf2iju7-Ch9FcitkoHe9GONeYUFhowzDlxoCodyb3Och2b2STQhu62SJFDmvWxbkqP2Qm_m1Xpg6s3Y-975TEwLY24vZac5PWqBggN0qPvXtbkyRZecVnzymYH16VwOVIh0tl0lmKJ6Cy-hvq3qUm4rd2cx95s-Bo5Cq9q_TOYPKyQKNgxsHDIN"/>
-                            <div class="absolute inset-0 p-6 flex flex-col justify-between pointer-events-none">
-                                <div class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border border-outline-variant self-start">
+                            <div id="tactical-map" class="w-full h-full z-0"></div>
+                            <div class="absolute inset-0 p-6 flex flex-col justify-between pointer-events-none z-10">
+                                <div class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border border-outline-variant self-start pointer-events-auto">
                                     <p class="text-[10px] font-mono text-primary font-black tracking-widest">TACTICAL_NETWORK_GRID_V4</p>
+                                    <p id="map-target-info" class="text-[9px] font-mono text-on-surface-variant mt-1">AWAITING TARGET...</p>
                                 </div>
                             </div>
                         </div>
