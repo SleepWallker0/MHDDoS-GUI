@@ -39,10 +39,17 @@ window.switchAssetTab = modals.switchAssetTab;
 
 window.setLogLevel = setLogLevel;
 window.clearTerminal = () => terminal.clear();
-window.copyLogs = () => terminal.copy();
+window.copyLogs = async () => {
+    await terminal.copy();
+    showToast("Console output copied to clipboard", "success");
+};
 window.toggleTerminalScroll = () => {
     const active = terminal.toggleAutoScroll();
-    showToast(active ? "Auto-scroll active" : "Auto-scroll paused", "info");
+    const icon = document.getElementById('scroll-toggle-icon');
+    if (icon) {
+        icon.innerText = active ? 'pause' : 'play_arrow';
+    }
+    showToast(active ? "Auto-scroll resumed" : "Auto-scroll paused", "info");
 };
 
 window.switchMainView = (view) => {
