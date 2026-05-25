@@ -15,7 +15,7 @@ const terminal = new TerminalUI('terminal-content');
 const mainChart = new TelemetryChart('networkVelocityChart');
 const tasks = new TaskManager('tasks-container');
 
-// Save terminal reference for global helper functions
+// Save references for global helper access
 window._terminal = terminal;
 
 // Bridge to Global Scope for HTML Event Handlers
@@ -35,6 +35,7 @@ window.openConfigModal = modals.openConfigModal;
 window.closeConfigModal = modals.closeConfigModal;
 window.addConfigSource = modals.addConfigSource;
 window.saveProxyConfig = modals.saveProxyConfig;
+window.switchAssetTab = modals.switchAssetTab;
 
 window.setLogLevel = setLogLevel;
 window.clearTerminal = () => terminal.clear();
@@ -52,8 +53,8 @@ window.scrollToConfig = () => {
     const el = document.getElementById('config-section');
     if (el) {
         el.scrollIntoView({ behavior: 'smooth' });
-        el.classList.add('ring-2', 'ring-primary', 'ring-offset-4', 'ring-offset-surface');
-        setTimeout(() => el.classList.remove('ring-2', 'ring-primary', 'ring-offset-4', 'ring-offset-surface'), 2000);
+        el.classList.add('ring-4', 'ring-primary/20', 'rounded-2xl');
+        setTimeout(() => el.classList.remove('ring-4', 'ring-primary/20'), 2000);
     }
 };
 
@@ -81,7 +82,9 @@ async function populateFileLists() {
         if (data.status === 'success') {
             const proxySelect = document.getElementById('proxy_list');
             const reflSelect = document.getElementById('reflector');
-            
+            const modalProxyList = document.getElementById('modal-proxy-list');
+            const modalReflList = document.getElementById('modal-reflector-list');
+
             if (proxySelect) {
                 proxySelect.innerHTML = data.proxies.map(f => `<option value="${f}">${f}</option>`).join('');
             }
@@ -89,8 +92,30 @@ async function populateFileLists() {
                 reflSelect.innerHTML = '<option value="">None (Standard)</option>' + 
                                      data.reflectors.map(f => `<option value="${f}">${f}</option>`).join('');
             }
+            
+            // Populate lists in Asset Manager modal
+            if (modalProxyList) {
+                modalProxyList.innerHTML = data.proxies.map(f => `<div class="py-1 border-b border-white/5 last:border-0">${f}</div>`).join('');
+            }
+            if (modalReflList) {
+                modalReflList.innerHTML = data.reflectors.map(f => `<div class="py-1 border-b border-white/5 last:border-0">${f}</div>`).join('');
+            }
         }
     } catch (e) { console.error("File list fetch failed", e); }
+}
+
+function handleMethodChange() {
+    const method = document.getElementById('method').value;
+    const reflContainer = document.getElementById('reflector-container');
+    
+    // List of methods requiring reflector (Amplification)
+    const ampMethods = ["MEM", "NTP", "DNS", "ARD", "CLDAP", "CHAR", "RDP"];
+    
+    if (ampMethods.includes(method)) {
+        reflContainer.classList.remove('hidden');
+    } else {
+        reflContainer.classList.add('hidden');
+    }
 }
 
 function populateMethods() {
@@ -98,16 +123,23 @@ function populateMethods() {
     if (!methodSelect) return;
 
     const l7 = ["CFB", "BYPASS", "GET", "POST", "OVH", "STRESS", "DYN", "SLOW", "HEAD", "NULL", "COOKIE", "PPS", "EVEN", "GSB", "DGB", "AVB", "CFBUAM", "APACHE", "XMLRPC", "BOT", "BOMB", "DOWNLOADER", "KILLER", "TOR", "RHEX", "STOMP"];
-    const l4 = ["TCP", "UDP", "SYN", "VSE", "MINECRAFT", "MCBOT", "CONNECTION", "CPS", "FIVEM", "FIVEM-TOKEN", "TS3", "MCPE", "ICMP", "OVH-UDP"];
+    const l4_amp = ["MEM", "NTP", "DNS", "ARD", "CLDAP", "CHAR", "RDP"];
+    const l4_normal = ["TCP", "UDP", "SYN", "VSE", "MINECRAFT", "MCBOT", "CONNECTION", "CPS", "FIVEM", "FIVEM-TOKEN", "TS3", "MCPE", "ICMP", "OVH-UDP"];
 
     methodSelect.innerHTML = `
-        <optgroup label="Layer 7 (Web / App)">
+        <optgroup label="Layer 7 (Web / Apps)">
             ${l7.map(m => `<option value="${m}" ${m === 'GET' ? 'selected' : ''}>${m}</option>`).join('')}
         </optgroup>
         <optgroup label="Layer 4 (Transport / Network)">
-            ${l4.map(m => `<option value="${m}">${m}</option>`).join('')}
+            ${l4_normal.map(m => `<option value="${m}">${m}</option>`).join('')}
+        </optgroup>
+        <optgroup label="Layer 4 (Amplification)">
+            ${l4_amp.map(m => `<option value="${m}">${m}</option>`).join('')}
         </optgroup>
     `;
+    
+    methodSelect.addEventListener('change', handleMethodChange);
+    handleMethodChange(); // Initial check
 }
 
 // WebSocket Orchestration

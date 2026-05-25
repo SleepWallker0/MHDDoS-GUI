@@ -41,6 +41,26 @@ export function switchToolTab(tool) {
     }
 }
 
+export function switchAssetTab(tabId) {
+    document.querySelectorAll('.asset-tab').forEach(t => {
+        t.classList.remove('bg-primary/20', 'text-primary');
+        t.classList.add('text-on-surface-variant', 'hover:text-primary');
+    });
+    const activeBtn = document.getElementById(`asset-tab-${tabId}`);
+    if (activeBtn) {
+        activeBtn.classList.add('bg-primary/20', 'text-primary');
+        activeBtn.classList.remove('text-on-surface-variant', 'hover:text-primary');
+    }
+
+    ['proxies', 'files'].forEach(id => {
+        const content = document.getElementById(`asset-content-${id}`);
+        if (content) {
+            if (id === tabId) content.classList.remove('hidden');
+            else content.classList.add('hidden');
+        }
+    });
+}
+
 export async function executeTool() {
     const target = document.getElementById('tool-target')?.value;
     const resultArea = document.getElementById('tool-result');
@@ -49,9 +69,9 @@ export async function executeTool() {
 
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">refresh</span> RUNNING';
+        btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">refresh</span> RUNNING';  
     }
-    
+
     if (resultArea) {
         resultArea.innerHTML = `
             <div class="flex flex-col items-center justify-center py-10 opacity-40 animate-pulse">
@@ -87,7 +107,7 @@ export async function executeTool() {
 function renderToolResult(data, tool) {
     const resultArea = document.getElementById('tool-result');
     if (!resultArea) return;
-    
+
     const container = document.createElement('div');
     container.className = 'animate-reveal space-y-4';
 
@@ -130,10 +150,10 @@ export async function openConfigModal() {
     if (!modal) return;
     modal.classList.remove('hidden');
     requestAnimationFrame(() => modal.classList.remove('opacity-0'));
-    
+
     const container = document.getElementById('config-sources-container');
     if (container) container.innerHTML = '<div class="text-center py-4"><span class="material-symbols-outlined animate-spin text-primary">refresh</span></div>';
-    
+
     try {
         const res = await fetch('/api/config/proxies');
         const data = await res.json();
@@ -153,12 +173,12 @@ function renderConfigSources(providers) {
     const container = document.getElementById('config-sources-container');
     if (!container) return;
     container.innerHTML = '';
-    
+
     providers.forEach((p, index) => {
         const item = document.createElement('div');
-        item.className = 'flex items-center gap-3 p-3 bg-black/40 rounded-lg border border-outline-variant group';     
+        item.className = 'flex items-center gap-3 p-3 bg-black/40 rounded-lg border border-outline-variant group';
         item.innerHTML = `
-            <select class="bg-surface border border-outline text-xs rounded px-2 py-1 outline-none w-24">
+            <select class="bg-surface border border-outline text-[10px] rounded px-2 py-1 outline-none w-24">       
                 <option value="0" ${p.type === 0 ? 'selected' : ''}>ALL</option>
                 <option value="1" ${p.type === 1 ? 'selected' : ''}>HTTP</option>
                 <option value="4" ${p.type === 4 ? 'selected' : ''}>SOCKS4</option>
@@ -168,14 +188,14 @@ function renderConfigSources(providers) {
             <button class="text-on-surface-variant hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"><span class="material-symbols-outlined text-sm">delete</span></button>
         `;
         container.appendChild(item);
-        
+
         const selects = item.querySelectorAll('select');
         const inputs = item.querySelectorAll('input');
         const buttons = item.querySelectorAll('button');
-        
+
         selects[0].onchange = (e) => { configSources[index].type = parseInt(e.target.value); };
         inputs[0].onchange = (e) => { configSources[index].url = e.target.value; };
-        buttons[0].onclick = () => { configSources.splice(index, 1); renderConfigSources(configSources); };
+        buttons[0].onclick = () => { configSources.splice(index, 1); renderConfigSources(configSources); };     
     });
 }
 
@@ -188,7 +208,7 @@ export async function saveProxyConfig() {
     try {
         const data = await apiRequest('/api/config/proxies', { providers: configSources });
         if(data.status === 'success') {
-            showToast("Proxies updated.", "success");
+            showToast("Assets updated.", "success");
             closeConfigModal();
         }
     } catch (e) { console.error(e); }
