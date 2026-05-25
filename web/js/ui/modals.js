@@ -213,3 +213,50 @@ export async function saveProxyConfig() {
         }
     } catch (e) { console.error(e); }
 }
+
+export function uploadAssetFile(fileType) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.txt';
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        try {
+            const res = await fetch(`/api/files/upload/${fileType}`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                showToast(data.message, 'success');
+                if (window.populateFileLists) window.populateFileLists();
+            } else {
+                showToast(data.message || 'Upload failed', 'error');
+            }
+        } catch (err) {
+            showToast("Upload failed due to network error", "error");
+        }
+    };
+    input.click();
+}
+
+export async function deleteAssetFile(fileType, filename) {
+    if(!confirm(`Delete ${filename}?`)) return;
+    try {
+        const res = await fetch(`/api/files/delete/${fileType}/${filename}`, { method: 'DELETE' });
+        const data = await res.json();
+        if(data.status === 'success') {
+            showToast(data.message, "success");
+            if (window.populateFileLists) window.populateFileLists();
+        } else {
+            showToast(data.message || "Delete failed", "error");
+        }
+    } catch(e) {
+        showToast("Delete failed due to network error", "error");
+    }
+}
+

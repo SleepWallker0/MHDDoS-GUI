@@ -62,6 +62,8 @@ window.refreshHistory = history.refreshHistory;
 window.changeHistoryPage = history.changeHistoryPage;
 window.showToast = showToast;
 window.uiProMax = uiProMax;
+window.uploadAssetFile = modals.uploadAssetFile;
+window.deleteAssetFile = modals.deleteAssetFile;
 
 window.toggleAdvancedSettings = function() {
     const container = document.getElementById('advanced-settings-container');
@@ -75,7 +77,7 @@ window.toggleAdvancedSettings = function() {
     }
 }
 
-async function populateFileLists() {
+window.populateFileLists = async function() {
     try {
         const res = await fetch('/api/files/list');
         const data = await res.json();
@@ -86,19 +88,30 @@ async function populateFileLists() {
             const modalReflList = document.getElementById('modal-reflector-list');
 
             if (proxySelect) {
-                proxySelect.innerHTML = data.proxies.map(f => `<option value="${f}">${f}</option>`).join('');
+                proxySelect.innerHTML = '<option value="AUTO">⚡ Auto Harvest (Smart)</option>' +
+                    '<option value="">📄 default.txt</option>' +
+                    data.proxies.filter(f => f !== 'default.txt').map(f => `<option value="${f}">📄 ${f}</option>`).join('');
             }
             if (reflSelect) {
                 reflSelect.innerHTML = '<option value="">None (Standard)</option>' + 
-                                     data.reflectors.map(f => `<option value="${f}">${f}</option>`).join('');
+                    '<option value="reflector.txt">📄 reflector.txt</option>' +
+                    data.reflectors.filter(f => f !== 'reflector.txt').map(f => `<option value="${f}">📄 ${f}</option>`).join('');
             }
             
             // Populate lists in Asset Manager modal
             if (modalProxyList) {
-                modalProxyList.innerHTML = data.proxies.map(f => `<div class="py-1 border-b border-white/5 last:border-0">${f}</div>`).join('');
+                modalProxyList.innerHTML = data.proxies.map(f => `
+                    <div class="flex justify-between items-center py-1.5 border-b border-white/5 last:border-0 group">
+                        <span>${f}</span>
+                        ${f !== 'default.txt' ? `<button onclick="deleteAssetFile('proxy', '${f}')" class="text-error opacity-0 group-hover:opacity-100 transition-opacity" title="Delete File"><span class="material-symbols-outlined text-[14px]">delete</span></button>` : ''}
+                    </div>`).join('');
             }
             if (modalReflList) {
-                modalReflList.innerHTML = data.reflectors.map(f => `<div class="py-1 border-b border-white/5 last:border-0">${f}</div>`).join('');
+                modalReflList.innerHTML = data.reflectors.map(f => `
+                    <div class="flex justify-between items-center py-1.5 border-b border-white/5 last:border-0 group">
+                        <span>${f}</span>
+                        ${f !== 'reflector.txt' ? `<button onclick="deleteAssetFile('reflector', '${f}')" class="text-error opacity-0 group-hover:opacity-100 transition-opacity" title="Delete File"><span class="material-symbols-outlined text-[14px]">delete</span></button>` : ''}
+                    </div>`).join('');
             }
         }
     } catch (e) { console.error("File list fetch failed", e); }

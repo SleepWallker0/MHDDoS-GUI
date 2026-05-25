@@ -1253,17 +1253,44 @@ async def update_proxy_config(data: UpdateProxyConfig) -> StatusResponse:
 
 # --- UX Enhancement Endpoints ---
 
-@app.post("/api/upload/proxy")
-async def upload_proxy_file(file: UploadFile = File(...)):
+@app.post("/api/files/upload/{file_type}")
+async def upload_asset_file(file_type: str, file: UploadFile = File(...)):
     try:
-        proxies_dir = BASE_DIR / "files" / "proxies"
-        proxies_dir.mkdir(parents=True, exist_ok=True)
-        file_path = proxies_dir / file.filename
+        if file_type == "proxy":
+            target_dir = BASE_DIR / "resource" / "files" / "proxies"
+        elif file_type == "reflector":
+            target_dir = BASE_DIR / "resource" / "files"
+        else:
+            return {"status": "error", "message": "Invalid file type"}
+            
+        target_dir.mkdir(parents=True, exist_ok=True)
+        file_path = target_dir / file.filename
         
         content = await file.read()
         await asyncio.to_thread(file_path.write_bytes, content)
             
-        return {"status": "success", "message": f"Saved as {file.filename}"}
+        return {"status": "success", "message": f"Saved {file.filename}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.delete("/api/files/delete/{file_type}/{filename}")
+async def delete_asset_file(file_type: str, filename: str):
+    try:
+        if file_type == "proxy":
+            file_path = BASE_DIR / "resource" / "files" / "proxies" / filename
+        elif file_type == "reflector":
+            file_path = BASE_DIR / "resource" / "files" / filename
+        else:
+            return {"status": "error", "message": "Invalid file type"}
+            
+        # Security check to prevent directory traversal
+        if ".." in filename or "/" in filename or "\\" in filename:
+            return {"status": "error", "message": "Invalid filename"}
+            
+        if file_path.exists() and file_path.is_file():
+            file_path.unlink()
+            return {"status": "success", "message": f"Deleted {filename}"}
+        return {"status": "error", "message": "File not found"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
