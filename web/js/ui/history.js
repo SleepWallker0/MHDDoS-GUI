@@ -35,9 +35,12 @@ export async function refreshHistory() {
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="7" class="py-12 text-center"><span class="material-symbols-rounded animate-spin text-primary text-2xl">refresh</span></td></tr>';
     try {
-        const data = await apiRequest(`/api/history/sessions?page=${historyPage}&limit=10&t=${Date.now()}`);    
+        const res = await fetch(`/api/history/sessions?page=${historyPage}&limit=10&t=${Date.now()}`);
+        const data = await res.json();
         if (data.status === 'success') {
             renderHistoryTable(data);
+        } else {
+            tbody.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-danger">Error: ${data.message || 'Unknown error'}</td></tr>`;
         }
     } catch (e) {
         tbody.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-danger">Connection Error: ${e.message}</td></tr>`;
