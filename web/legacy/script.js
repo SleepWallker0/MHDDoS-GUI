@@ -4,143 +4,8 @@ const term = document.getElementById('terminal-content');
         let ws = null;
         let currentLogFilter = 'ALL';
         let currentTaskFilter = null;
-        const LOG_LEVELS = { 'DEBUG': 0, 'INFO': 1, 'SUCCESS': 2, 'WARNING': 3, 'ERROR': 4 };
+        const LOG_LEVELS = { 'DEBUG': 0, 'INFO': 1, 'ERROR': 2 };
         let currentLogLevel = localStorage.getItem('mhddos_log_level') || 'INFO';
-        
-        function setLogLevel(level) {
-            currentLogLevel = level;
-            localStorage.setItem('mhddos_log_level', level);
-            
-            // Refresh visibility of existing logs
-            const term = document.getElementById('terminal-content');
-            if (!term) return;
-            
-            const entries = term.querySelectorAll('.log-entry');
-            const targetMinLevel = LOG_LEVELS[level] || 0;
-            
-            entries.forEach(entry => {
-                const entryLevel = entry.dataset.level || 'INFO';
-                const currentEntryLevelValue = LOG_LEVELS[entryLevel] || 0;
-                
-                if (currentEntryLevelValue >= targetMinLevel) {
-                    entry.classList.remove('hidden');
-                } else {
-                    entry.classList.add('hidden');
-                }
-            });
-            
-            showToast(`Log Filter: ${level}+`, "info");
-        }
-        
-        // --- Global State ---
-        let historyPage = 1;
-        let activeHistoryChart = null;
-        var memoryFields = ['target', 'method', 'threads', 'duration', 'proxy_type', 'proxy_list', 'rpc', 'reflector', 'auto_refresh', 'proxy_refresh', 'auto_harvest', 'smart_rpc', 'auto_scale', 'advanced_evasion', 'distribute_to_workers', 'behavioral_intensity', 'adaptive_learning', 'flaresolverr_url'];
-
-        const runtimeParams = new URLSearchParams(window.location.search);
-        const APP_RUNTIME = {
-            mode: (runtimeParams.get('mode') || 'live').toLowerCase(),
-            replayFixture: runtimeParams.get('fixture') || 'synthetic-burst',
-            replayBatch: Math.max(1, parseInt(runtimeParams.get('batch') || '6', 10) || 6),
-            replayStepMs: Math.max(16, parseInt(runtimeParams.get('step') || '80', 10) || 80),
-            report: runtimeParams.get('report') === '1'
-        };
-        const IS_REPLAY_MODE = APP_RUNTIME.mode === 'replay';
-        let replayTimer = null;
-        let replayStats = null;
-        
-        const benchmarkState = {
-            processedEnvelopes: 0,
-            renderTimes: [],
-            maxQueueDepth: 0,
-            chartFlushCount: 0
-        };
-
-        // --- High Performance Infrastructure ---
-        class RingBuffer {
-            constructor(capacity) {
-                this.capacity = capacity;
-                this.buffer = new Array(capacity);
-                this.head = 0;
-                this.tail = 0;
-                this.size = 0;
-            }
-            push(item) {
-                this.buffer[this.head] = item;
-                this.head = (this.head + 1) % this.capacity;
-                if (this.size < this.capacity) {
-                    this.size++;
-                } else {
-                    this.tail = (this.tail + 1) % this.capacity;
-                }
-            }
-            toArray() {
-                const arr = new Array(this.size);
-                for (let i = 0; i < this.size; i++) {
-                    arr[i] = this.buffer[(this.tail + i) % this.capacity];
-                }
-                return arr;
-            }
-            getVisible(cutoff) {
-                if (this.size === 0) return [];
-                
-                // Binary search to find the first index where item.time >= cutoff
-                let low = 0;
-                let high = this.size - 1;
-                let firstIndex = -1;
-
-                while (low <= high) {
-                    let mid = Math.floor((low + high) / 2);
-                    let midItem = this.buffer[(this.tail + mid) % this.capacity];
-                    if (midItem.time >= cutoff) {
-                        firstIndex = mid;
-                        high = mid - 1;
-                    } else {
-                        low = mid + 1;
-                    }
-                }
-
-                if (firstIndex === -1) return [];
-
-                const res = new Array(this.size - firstIndex);
-                for (let i = 0; i < res.length; i++) {
-                    res[i] = this.buffer[(this.tail + firstIndex + i) % this.capacity];
-                }
-                return res;
-            }
-        }
-
-        let perfWorker = null;
-        try {
-            perfWorker = new Worker('worker.js');
-            perfWorker.onmessage = function(e) {
-                if (e.data.type === 'downsample_result') {
-                    if (e.data.id !== lastChartRequestId) return;
-                    const sampled = e.data.result;
-                    const labels = sampled.map(d => formatTimeLabel(d.time, currentTimeframe));
-
-                    ppsChart.data.labels = labels;
-                    ppsChart.data.datasets[0].data = sampled.map(d => d.rps);
-                    ppsChart.update('none');
-
-                    bpsChart.data.labels = labels;
-                    bpsChart.data.datasets[0].data = sampled.map(d => d.bps);
-                    bpsChart.update('none');
-
-                    latChart.data.labels = labels;
-                    latChart.data.datasets[0].data = sampled.map(d => d.lat);
-                    latChart.update('none');
-                } else if (e.data.type === 'serialize_result') {
-                    try {
-                        localStorage.setItem('mhddos_telemetry', e.data.serialized);
-                    } catch(err) {
-                        console.error("Local storage quota exceeded, telemetry save failed.");
-                    }
-                }
-            };
-        } catch (e) {
-            console.warn("Telemetry worker initialization failed, falling back to main thread sync mode.");
-        }
 
         // --- Log Isolation ---
         function setTaskFilter(taskId) {
@@ -152,9 +17,7 @@ const term = document.getElementById('terminal-content');
                 showToast(`Terminal isolated to Task ${taskId.toUpperCase()}.`, 'success');
             }
             refreshLogVisibility();
-            if (!IS_REPLAY_MODE) {
-                refreshTasks(); // Update UI to show which one is isolated
-            }
+            refreshTasks(); // Update UI to show which one is isolated
         }
 
         // --- Toast System ---
@@ -190,158 +53,6 @@ const term = document.getElementById('terminal-content');
                 toast.classList.add('toast-exit');
                 setTimeout(() => toast.remove(), 300);
             }, 4000);
-        }
-
-        function handleRealtimeEnvelope(data) {
-            if (!data || !data.task_id) return;
-
-            if (data.type === 'impact') {
-                updateMetrics(
-                    data.task_id,
-                    null, null, null, null, null,
-                    data.data,
-                    data.bypass || null
-                );
-                return;
-            }
-
-            if (data.type === 'telemetry') {
-                updateMetrics(
-                    data.task_id,
-                    data.pps !== undefined ? data.pps : null,
-                    data.bps !== undefined ? data.bps : null,
-                    data.lat !== undefined ? data.lat : null,
-                    data.pool_active !== undefined ? data.pool_active : null,
-                    data.pool_total !== undefined ? data.pool_total : null
-                );
-                return;
-            }
-
-            appendLog(data);
-            if (data.msg && data.msg.includes("PROCESS_SPAWNED")) {
-                // Inform user but don't set RUNNING state yet
-                showToast("Engine process spawned. Initializing...", "info");
-                if (!IS_REPLAY_MODE) refreshTasks();
-            }
-            // Proactive State Recovery: If we receive any engine log, we must be running
-            if (data.msg && (data.msg.includes("[*]") || data.msg.includes("Resource:") || data.msg.includes("COMMAND LAUNCHED"))) {
-                if (currentAppState === STATE.STARTING || currentAppState === STATE.IDLE) {
-                    setAppState(STATE.RUNNING);
-                    if (!IS_REPLAY_MODE) refreshTasks();
-                }
-            }
-            if (data.msg && data.msg.includes("COMMAND TERMINATED") && !IS_REPLAY_MODE) {
-                setTimeout(refreshTasks, 1000);
-            }
-        }
-
-        function handleRawRealtimeText(msg) {
-            appendLog(msg);
-            if (msg.includes("COMMAND TERMINATED") && !IS_REPLAY_MODE) setTimeout(refreshTasks, 1000);
-        }
-
-        function configureReplayModeUi() {
-            const connectionStatus = document.getElementById('connection-status');
-            const headerStatus = document.getElementById('header-status-text');
-            const startBtn = document.getElementById('start-btn');
-            const stopBtn = document.getElementById('stop-btn');
-            const targetInput = document.getElementById('target');
-
-            if (connectionStatus) {
-                connectionStatus.className = 'size-2 rounded-full bg-warning pulse-active';
-            }
-            if (headerStatus) {
-                headerStatus.textContent = 'REPLAY_MODE';
-                headerStatus.className = 'text-xs font-mono font-bold text-warning';
-            }
-            if (startBtn) {
-                startBtn.disabled = true;
-                startBtn.classList.add('opacity-60', 'cursor-not-allowed');
-                const label = startBtn.querySelector('span:last-child');
-                if (label) label.textContent = 'REPLAY LOCKED';
-            }
-            if (stopBtn) {
-                stopBtn.classList.add('hidden');
-            }
-            if (targetInput && !targetInput.value) {
-                targetInput.value = `offline://replay/${APP_RUNTIME.replayFixture}`;
-            }
-
-            appendLog(
-                `[*] REPLAY_MODE: fixture=${APP_RUNTIME.replayFixture}, batch=${APP_RUNTIME.replayBatch}, step=${APP_RUNTIME.replayStepMs}ms`,
-                'SYSTEM',
-                'replay'
-            );
-            showToast(`Replay mode active: ${APP_RUNTIME.replayFixture}`, 'info');
-        }
-
-        let replayActive = false;
-        function startReplayMode() {
-            configureReplayModeUi();
-            replayActive = true;
-
-            if (!window.MHDReplayFixtures || typeof window.MHDReplayFixtures.build !== 'function') {
-                appendLog('[!] REPLAY_FIXTURE_ERR: Local replay fixtures are unavailable.', 'ERROR');
-                replayActive = false;
-                return;
-            }
-
-            const scenario = window.MHDReplayFixtures.build(APP_RUNTIME.replayFixture, {
-                batchSize: APP_RUNTIME.replayBatch,
-                stepMs: APP_RUNTIME.replayStepMs
-            });
-            if (!scenario || !Array.isArray(scenario.messages) || scenario.messages.length === 0) {
-                appendLog('[!] REPLAY_FIXTURE_ERR: Selected replay fixture is empty.', 'ERROR');
-                replayActive = false;
-                return;
-            }
-
-            let cursor = 0;
-            const batchSize = Number.isFinite(scenario.batchSize) ? scenario.batchSize : APP_RUNTIME.replayBatch;
-            const stepMs = Number.isFinite(scenario.stepMs) ? scenario.stepMs : APP_RUNTIME.replayStepMs;
-            replayStats = {
-                fixture: scenario.name || APP_RUNTIME.replayFixture,
-                processed: 0,
-                total: scenario.messages.length,
-                batches: 0,
-                startedAt: performance.now()
-            };
-
-            const pump = () => {
-                const batchStarted = performance.now();
-                let processedThisBatch = 0;
-
-                while (processedThisBatch < batchSize && cursor < scenario.messages.length) {
-                    telemetryQueue.push(scenario.messages[cursor]);
-                    cursor += 1;
-                    processedThisBatch += 1;
-                    replayStats.processed += 1;
-                }
-                
-                scheduleRender();
-
-                replayStats.batches += 1;
-                replayStats.lastBatchMs = Number((performance.now() - batchStarted).toFixed(2));
-
-                if (cursor < scenario.messages.length) {
-                    replayTimer = window.setTimeout(pump, stepMs);
-                    return;
-                }
-
-                replayActive = false;
-                const totalMs = Number((performance.now() - replayStats.startedAt).toFixed(2));
-                const throughput = totalMs > 0 ? Number((replayStats.processed / (totalMs / 1000)).toFixed(1)) : 0;
-                window.__mhddosReplayStats = { ...replayStats, totalMs: totalMs, throughput: throughput };
-                appendLog(
-                    `[*] REPLAY_COMPLETE: ${replayStats.processed} envelopes across ${replayStats.batches} batches at ${throughput} env/s.`,
-                    'SYSTEM',
-                    'replay'
-                );
-                showToast(`Replay complete: ${replayStats.processed} envelopes`, 'success');
-                setAppState(STATE.IDLE);
-            };
-
-            pump();
         }
 
         // --- Theme Management ---
@@ -396,71 +107,45 @@ const term = document.getElementById('terminal-content');
         function setAppState(state) {
             currentAppState = state;
             document.body.dataset.appState = state;
-            
-            const hubBtn = document.getElementById('deploy-hub-btn');
-            const hubIcon = document.getElementById('deploy-hub-icon');
-            const hubText = document.getElementById('deploy-hub-text');
-            const hubLabel = document.getElementById('deploy-hub-label');
-            
-            const inputs = document.querySelectorAll('aside input, aside select, .sidebar-module-content input, .sidebar-module-content select');
+            const startBtn = document.getElementById('start-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            const loader = document.getElementById('action-loader');
+            // Select all inputs except specific buttons we manage manually
+            const inputs = document.querySelectorAll('aside input, aside select, aside button:not(#stop-btn):not(#start-btn)');
 
             switch(state) {
                 case STATE.IDLE:
-                    if (hubBtn) {
-                        hubBtn.classList.remove('animate-deploy-pulse');
-                        hubIcon.textContent = "rocket_launch";
-                        hubIcon.classList.remove('animate-spin');
-                        hubText.textContent = "DEPLOY TACTICAL FLEET";
-                        hubLabel.textContent = "Mission Authorization";
-                        hubBtn.disabled = false;
-                    }
+                    startBtn.classList.remove('hidden');
+                    stopBtn.classList.add('hidden');
+                    loader.classList.add('hidden');
+                    startBtn.disabled = false;
                     inputs.forEach(i => { i.disabled = false; i.style.opacity = "1"; });
                     document.getElementById('header-status-text').textContent = "SYSTEM_READY";
                     document.getElementById('header-status-text').className = "text-xs font-mono font-bold text-primary";
                     break;
                 case STATE.STARTING:
-                    if (hubBtn) {
-                        hubBtn.classList.remove('animate-deploy-pulse');
-                        hubIcon.textContent = "sync";
-                        hubIcon.classList.add('animate-spin');
-                        hubText.textContent = "SYNCHRONIZING...";
-                        hubLabel.textContent = "Engine Handshake";
-                        hubBtn.disabled = true;
-                    }
+                    startBtn.classList.add('hidden');
+                    stopBtn.classList.add('hidden');
+                    loader.classList.remove('hidden');
                     inputs.forEach(i => { i.disabled = true; i.style.opacity = "0.5"; });
                     break;
                 case STATE.RUNNING:
-                    if (hubBtn) {
-                        hubBtn.classList.add('animate-deploy-pulse');
-                        hubIcon.textContent = "cancel";
-                        hubIcon.classList.remove('animate-spin');
-                        hubText.textContent = "ABORT ALL MISSIONS";
-                        hubLabel.textContent = "Active Sequence";
-                        hubBtn.disabled = false;
-                    }
-                    inputs.forEach(i => { i.disabled = false; i.style.opacity = "1"; });
+                    startBtn.classList.remove('hidden'); // Ensure we can start MORE tasks
+                    startBtn.disabled = false;
+                    stopBtn.classList.remove('hidden'); // Show abort button to stop all tasks
+                    loader.classList.add('hidden');
+                    stopBtn.disabled = false;
+                    inputs.forEach(i => { i.disabled = false; i.style.opacity = "1"; }); // Ensure inputs are usable again
                     document.getElementById('header-status-text').textContent = "SEQUENCE_ACTIVE";
                     document.getElementById('header-status-text').className = "text-xs font-mono font-bold text-warning animate-pulse";
                     break;
                 case STATE.STOPPING:
-                    if (hubBtn) {
-                        hubBtn.classList.remove('animate-deploy-pulse');
-                        hubIcon.textContent = "hourglass_empty";
-                        hubIcon.classList.add('animate-pulse');
-                        hubText.textContent = "TERMINATING...";
-                        hubLabel.textContent = "Emergency Stop";
-                        hubBtn.disabled = true;
-                    }
+                    startBtn.classList.add('hidden');
+                    stopBtn.classList.remove('hidden');
+                    stopBtn.disabled = true;
+                    loader.classList.add('hidden');
                     inputs.forEach(i => { i.disabled = true; i.style.opacity = "0.5"; });
                     break;
-            }
-        }
-
-        function handleMainAction() {
-            if (currentAppState === STATE.IDLE) {
-                startAttack();
-            } else if (currentAppState === STATE.RUNNING) {
-                stopAllAttacks();
             }
         }
 
@@ -472,7 +157,7 @@ const term = document.getElementById('terminal-content');
             if (map) map.remove();
             map = L.map('tactical-map', {
                 center: [lat, lon],
-                zoom: (lat === 0 && lon === 0) ? 2 : 10,
+                zoom: 3,
                 zoomControl: false,
                 attributionControl: false
             });
@@ -480,26 +165,24 @@ const term = document.getElementById('terminal-content');
                 maxZoom: 19
             }).addTo(map);
             if(lat !== 0) marker = L.circleMarker([lat, lon], { color: '#10b981', radius: 8, fillOpacity: 0.6 }).addTo(map);
-            
-            // Force recalculation after a short delay for CSS transitions
-            setTimeout(() => { if(map) map.invalidateSize(); }, 200);
         }
 
         // --- Time-Series Analytics & Charts ---
-        const MAX_BUFFER_SIZE = 604800;
-        let historyBuffer = new RingBuffer(MAX_BUFFER_SIZE);
+        let historyBuffer = [];
         try {
             const stored = localStorage.getItem('mhddos_telemetry');
             if (stored) {
-                const raw = JSON.parse(stored);
+                historyBuffer = JSON.parse(stored);
                 // Prune records older than 1 Week
                 const cutoff = Date.now() - (604800 * 1000);
-                raw.filter(d => d && d.time >= cutoff).forEach(d => historyBuffer.push(d));
+                historyBuffer = historyBuffer.filter(d => d.time >= cutoff);
             }
         } catch (e) {
             console.error("Failed to parse telemetry history.", e);
         }
         let currentTimeframe = 3600; // Default to 1H (in seconds)
+        // Max buffer: 1W = 7 * 24 * 3600 = 604800 points. 
+        const MAX_BUFFER_SIZE = 604800;
 
         const tfMap = {
             '1M': 60,
@@ -618,14 +301,15 @@ const term = document.getElementById('terminal-content');
                     }
                 },
                 animation: {
-                    duration: 0 // Disable animations for performance
+                    duration: 1000,
+                    easing: 'easeOutQuart'
                 },
                 interaction: { mode: 'nearest', axis: 'x', intersect: false }
             }
         });
 
-        const ppsChart = new Chart(document.getElementById('networkVelocityChart'), chartConfig('#6366f1', 'Network Velocity', 'pps'));
-        const bpsChart = new Chart(document.getElementById('dataThroughputChart'), chartConfig('#06b6d4', 'Data Throughput', 'bytes'));
+        const ppsChart = new Chart(document.getElementById('networkVelocityChart'), chartConfig('#10b981', 'Network Velocity', 'pps'));
+        const bpsChart = new Chart(document.getElementById('dataThroughputChart'), chartConfig('#3b82f6', 'Data Throughput', 'bytes'));
         const latChart = new Chart(document.getElementById('latencyChart'), chartConfig('#f59e0b', 'Target Latency', 'ms'));
 
         // Impact Distribution Chart (Doughnut)
@@ -651,7 +335,13 @@ const term = document.getElementById('terminal-content');
                 cutout: '70%',
                 plugins: {
                     legend: { display: false },
-                    title: { display: false }
+                    title: {
+                        display: true,
+                        text: 'COMBAT IMPACT DISTRIBUTION',
+                        color: '#94a3b8',
+                        font: { size: 9, weight: '800', family: 'Inter' },
+                        padding: { bottom: 10 }
+                    }
                 }
             }
         });
@@ -661,7 +351,7 @@ const term = document.getElementById('terminal-content');
         let globalTarget = "None";
 
         // Render historical data initially if available
-        if (historyBuffer.size > 0) {
+        if (historyBuffer.length > 0) {
             setTimeout(renderCharts, 100);
         }
 
@@ -675,31 +365,16 @@ const term = document.getElementById('terminal-content');
             return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
         }
 
-        function doDownsampleSync(data, targetLength, taskId = null) {
-            if (data.length <= targetLength) {
-                if (taskId) {
-                    return data.map(point => {
-                        const m = point.tasks?.[taskId];
-                        return {
-                            time: point.time,
-                            rps: m ? m.rps || 0 : 0,
-                            bps: m ? m.bps || 0 : 0,
-                            lat: m ? m.lat || 0 : 0,
-                            s: m ? m.s || 0 : 0,
-                            w: m ? m.w || 0 : 0,
-                            e: m ? m.e || 0 : 0,
-                            t: m ? m.t || 0 : 0
-                        };
-                    });
-                }
-                return data;
-            }
+        function downsample(data, targetLength, taskId = null) {
+            if (data.length <= targetLength) return data;
             const factor = Math.ceil(data.length / targetLength);
             const res = [];
             for (let i = 0; i < data.length; i += factor) {
                 const chunk = data.slice(i, i + factor);
+                
                 let rps = 0, bps = 0, lat = 0, count = 0;
                 let s = 0, w = 0, e = 0, t = 0;
+                
                 chunk.forEach(point => {
                     if (taskId) {
                         const m = point.tasks?.[taskId];
@@ -707,47 +382,36 @@ const term = document.getElementById('terminal-content');
                             rps += m.rps || 0;
                             bps += m.bps || 0;
                             lat += m.lat || 0;
-                            s += m.s || 0;
-                            w += m.w || 0;
-                            e += m.e || 0;
-                            t += m.t || 0;
+                            s += m.s || 0; w += m.w || 0; e += m.e || 0; t += m.t || 0;
                             count++;
                         }
                     } else {
                         rps += point.rps || 0;
                         bps += point.bps || 0;
                         lat += point.lat || 0;
-                        s += point.s || 0;
-                        w += point.w || 0;
-                        e += point.e || 0;
-                        t += point.t || 0;
+                        s += point.s || 0; w += point.w || 0; e += point.e || 0; t += point.t || 0;
                         count++;
                     }
                 });
-                if (count > 0) {
-                    res.push({
-                        time: chunk[chunk.length - 1].time,
-                        rps: Math.round(rps / count),
-                        bps: Math.round(bps / count),
-                        lat: Math.round(lat / count),
-                        s: Math.round(s / count),
-                        w: Math.round(w / count),
-                        e: Math.round(e / count),
-                        t: Math.round(t / count)
-                    });
-                }
+
+                res.push({
+                    time: chunk[chunk.length - 1].time,
+                    rps: count > 0 ? rps / (taskId ? 1 : chunk.length) : 0, 
+                    bps: count > 0 ? bps / (taskId ? 1 : chunk.length) : 0,
+                    lat: count > 0 ? lat / count : 0,
+                    s, w, e, t
+                });
             }
             return res;
         }
 
-        let lastChartRequestId = 0;
         function renderCharts() {
             const now = Date.now();
             const cutoff = now - (currentTimeframe * 1000);
-
-            // Optimization: Get visible data from ring buffer
-            let visibleData = historyBuffer.getVisible(cutoff);
-
+            
+            // Optimization: Filter data using binary search or efficient slicing
+            let visibleData = historyBuffer.filter(d => d.time >= cutoff);
+            
             if (visibleData.length < 2) {
                 visibleData = [
                     { time: cutoff, rps: 0, bps: 0, lat: 0, s:0, w:0, e:0, t:0 },
@@ -755,45 +419,29 @@ const term = document.getElementById('terminal-content');
                 ];
             }
 
-            const requestId = ++lastChartRequestId;
-            if (perfWorker) {
-                perfWorker.postMessage({
-                    type: 'downsample',
-                    data: visibleData,
-                    payload: { targetLength: 80, taskId: currentTaskFilter, id: requestId }
-                });
-            } else {
-                // Main thread fallback
-                const sampled = doDownsampleSync(visibleData, 80, currentTaskFilter);
-                const labels = sampled.map(d => formatTimeLabel(d.time, currentTimeframe));
-                
-                ppsChart.data.labels = labels;
-                ppsChart.data.datasets[0].data = sampled.map(d => d.rps);
-                ppsChart.update('none');
-
-                bpsChart.data.labels = labels;
-                bpsChart.data.datasets[0].data = sampled.map(d => d.bps);
-                bpsChart.update('none');
-
-                latChart.data.labels = labels;
-                latChart.data.datasets[0].data = sampled.map(d => d.lat);
-                latChart.update('none');
-            }
+            const sampled = downsample(visibleData, 80, currentTaskFilter);
+            const labels = sampled.map(d => formatTimeLabel(d.time, currentTimeframe));
             
-            // Impact Chart: Respect task isolation
+            ppsChart.data.labels = labels;
+            ppsChart.data.datasets[0].data = sampled.map(d => d.rps);
+            ppsChart.update('none');
+
+            bpsChart.data.labels = labels;
+            bpsChart.data.datasets[0].data = sampled.map(d => d.bps);
+            bpsChart.update('none');
+
+            latChart.data.labels = labels;
+            latChart.data.datasets[0].data = sampled.map(d => d.lat);
+            latChart.update('none');
+
+            // Update Impact Chart with latest aggregate
             const last = visibleData[visibleData.length - 1];
             if (last) {
-                if (currentTaskFilter && last.tasks && last.tasks[currentTaskFilter]) {
-                    const t = last.tasks[currentTaskFilter];
-                    impactChart.data.datasets[0].data = [t.s || 0, t.w || 0, t.e || 0, t.t || 0];
-                } else {
-                    impactChart.data.datasets[0].data = [last.s || 0, last.w || 0, last.e || 0, last.t || 0];
-                }
+                impactChart.data.datasets[0].data = [last.s || 0, last.w || 0, last.e || 0, last.t || 0];
                 impactChart.update('none');
             }
         }
 
-        // Global state for Command Center
         let successHistory = [];
         let peakRPS = 0;
         let peakLat = 0;
@@ -814,304 +462,109 @@ const term = document.getElementById('terminal-content');
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
-        function updateMetrics(taskId, rpsStr, bpsStr, latStr, poolActive, poolTotal, impactData = null, bypassInfo = null) {
+        function updateMetrics(taskId, rpsStr, bpsStr, latStr, poolActive, poolTotal, impactData = null) {
             if (!taskId) return;
 
+            // 1. Parse individual task metrics
+            let valRps = parseFloat(rpsStr.replace(/[^0-9.]/g, ''));
+            if (isNaN(valRps)) valRps = 0;
+            if (rpsStr.toLowerCase().includes('k')) valRps *= 1000;
+            else if (rpsStr.toLowerCase().includes('m')) valRps *= 1000000;
+
+            let valBps = parseFloat(bpsStr.replace(/[^0-9.]/g, ''));
+            if (isNaN(valBps)) valBps = 0;
+            const bpsLower = bpsStr.toLowerCase();
+            if (bpsLower.includes('gb')) valBps *= 1024 * 1024 * 1024;
+            else if (bpsLower.includes('mb')) valBps *= 1024 * 1024;
+            else if (bpsLower.includes('kb')) valBps *= 1024;
+
+            let valLat = parseFloat(latStr.replace(/[^0-9.]/g, ''));
+            if (isNaN(valLat)) valLat = 0;
+
+            // 2. Store in global registry
             const m = window._taskMetrics[taskId] || {};
-
-            // 1. Parse individual task metrics (only if provided/not placeholder)
-            let valRps = m.rps || 0;
-            if (rpsStr !== null && rpsStr !== undefined) {
-                valRps = typeof rpsStr === 'number' ? rpsStr : parseFloat(rpsStr.replace(/[^0-9.]/g, ''));
-                if (isNaN(valRps)) valRps = 0;
-                if (typeof rpsStr === 'string') {
-                    if (rpsStr.toLowerCase().includes('k')) valRps *= 1000;
-                    else if (rpsStr.toLowerCase().includes('m')) valRps *= 1000000;
-                }
-            }
-
-            let valBps = m.bps || 0;
-            if (bpsStr !== null && bpsStr !== undefined) {
-                valBps = typeof bpsStr === 'number' ? bpsStr : parseFloat(bpsStr.replace(/[^0-9.]/g, ''));
-                if (isNaN(valBps)) valBps = 0;
-                if (typeof bpsStr === 'string') {
-                    const bpsLower = bpsStr.toLowerCase();
-                    if (bpsLower.includes('gb')) valBps *= 1024 * 1024 * 1024;
-                    else if (bpsLower.includes('mb')) valBps *= 1024 * 1024;
-                    else if (bpsLower.includes('kb')) valBps *= 1024;
-                }
-            }
-
-            // Gap 5 Fix: Preserve timeout/error latency states
-            let valLat = m.lat || 0;
-            let displayLat = latStr !== null && latStr !== undefined ? latStr : (m.latStr || "0 ms");
-            
-            if (latStr !== null && latStr !== undefined) {
-                if (typeof latStr === 'number') {
-                    valLat = latStr;
-                } else {
-                    const numericLat = parseFloat(latStr.replace(/[^0-9.]/g, ''));
-                    if (!isNaN(numericLat)) {
-                        valLat = numericLat;
-                    } else {
-                        // It's a string like "TIMEOUT" or "ERROR"
-                        // Keep numeric valLat as 0 or a high value if preferred, 
-                        // but ensure displayLat is the raw string.
-                        valLat = 0; 
-                    }
-                }
-            }
-
-            // Robust extraction of Warm Pool count
-            let valWarm = m.poolWarm || 0;
-            let active = m.poolActive || 0;
-            if (poolActive !== null && poolActive !== undefined) {
-                active = parseInt(poolActive) || 0;
-            }
-            
-            let total = m.poolTotal || 0;
-            if (poolTotal !== null && poolTotal !== undefined) {
-                if (typeof poolTotal === 'string') {
-                    const warmMatch = poolTotal.match(/\(Warm: (\d+)\)/);
-                    if (warmMatch) {
-                        valWarm = parseInt(warmMatch[1]);
-                        total = parseInt(poolTotal.split('(')[0].trim()) || 0;
-                    } else {
-                        total = parseInt(poolTotal) || 0;
-                    }
-                } else {
-                    total = parseInt(poolTotal) || 0;
-                }
-            }
-            
-            // 2. Store in global registry (State update only)
             window._taskMetrics[taskId] = {
                 lastUpdate: Date.now(),
                 rps: valRps,
-                rpsStr: (rpsStr !== null && rpsStr !== undefined) ? rpsStr : (m.rpsStr || "0"),
+                rpsStr: rpsStr,
                 bps: valBps,
-                bpsStr: (bpsStr !== null && bpsStr !== undefined) ? bpsStr : (m.bpsStr || "0 B"),
+                bpsStr: bpsStr,
                 lat: valLat,
-                latStr: displayLat,
-                poolActive: active,
-                poolTotal: total,
-                poolWarm: valWarm,
+                latStr: latStr,
+                poolActive: parseInt(poolActive) || 0,
+                poolTotal: parseInt(poolTotal) || 0,
                 s: impactData ? impactData.s : (m.s || 0),
                 w: impactData ? impactData.w : (m.w || 0),
                 e: impactData ? impactData.e : (m.e || 0),
-                t: impactData ? impactData.t : (m.t || 0),
-                health: impactData && impactData.health ? impactData.health : (m.health || "stable"),
-                bypass: bypassInfo || m.bypass || null
+                t: impactData ? impactData.t : (m.t || 0)
             };
-        }
 
-        function updateGlobalMetrics() {
+            // 3. Purge stale task data (> 10s)
             const now = Date.now();
-            
-            // Purge stale task data (> 10s)
             Object.keys(window._taskMetrics).forEach(id => {
                 if (now - window._taskMetrics[id].lastUpdate > 10000) delete window._taskMetrics[id];
             });
 
+            // 4. Calculate Fleet Aggregates
             const activeMetrics = Object.values(window._taskMetrics);
-            
-            // 1. Calculate Aggregate Metrics (for history/background)
             const totalRps = activeMetrics.reduce((s, m) => s + m.rps, 0);
             const totalBps = activeMetrics.reduce((s, m) => s + m.bps, 0);
-            const avgLat = (() => {
-                const validLat = activeMetrics.map(m => m.lat).filter(l => l > 0);
-                return validLat.length > 0 ? validLat.reduce((s, l) => s + l, 0) / validLat.length : 0;
-            })();
+            const maxLat = activeMetrics.reduce((max, m) => Math.max(max, m.lat), 0);
+            const avgLat = activeMetrics.length > 0 ? activeMetrics.reduce((s, m) => s + m.lat, 0) / activeMetrics.length : 0;
+            const aggActive = activeMetrics.reduce((s, m) => s + m.poolActive, 0);
+            const aggTotal = activeMetrics.reduce((s, m) => s + m.poolTotal, 0);
             
             const totalS = activeMetrics.reduce((s, m) => s + m.s, 0);
             const totalW = activeMetrics.reduce((s, m) => s + m.w, 0);
             const totalE = activeMetrics.reduce((s, m) => s + m.e, 0);
             const totalT = activeMetrics.reduce((s, m) => s + m.t, 0);
 
-            // 2. Calculate Snapshot for UI (respects filter for Command Center cards)
-            const uiMetrics = (currentTaskFilter && window._taskMetrics[currentTaskFilter]) 
-                ? [window._taskMetrics[currentTaskFilter]] 
-                : activeMetrics;
-
-            const latestBypass = activeMetrics.find(m => m.bypass)?.bypass || null;
-
-            // 3. Aggregate Health State
-            let aggHealth = "stable";
-            if (activeMetrics.some(m => m.health === "failed")) aggHealth = "failed";
-            else if (activeMetrics.some(m => m.health === "degraded")) aggHealth = "degraded";
-
-            const snapshot = {
-                now, 
-                totalRps: uiMetrics.reduce((s, m) => s + m.rps, 0),
-                totalBps: uiMetrics.reduce((s, m) => s + m.bps, 0),
-                maxLat: uiMetrics.reduce((max, m) => Math.max(max, m.lat), 0),
-                avgLat: (() => {
-                    const validLat = uiMetrics.map(m => m.lat).filter(l => l > 0);
-                    return validLat.length > 0 ? validLat.reduce((s, l) => s + l, 0) / validLat.length : 0;
-                })(),
-                aggActive: uiMetrics.reduce((s, m) => s + m.poolActive, 0),
-                aggTotal: uiMetrics.reduce((s, m) => s + m.poolTotal, 0),
-                aggWarm: uiMetrics.reduce((s, m) => s + m.poolWarm, 0),
-                totalS: uiMetrics.reduce((s, m) => s + m.s, 0),
-                totalW: uiMetrics.reduce((s, m) => s + m.w, 0),
-                totalE: uiMetrics.reduce((s, m) => s + m.e, 0),
-                totalT: uiMetrics.reduce((s, m) => s + m.t, 0),
-                count: activeMetrics.length,
-                health: aggHealth,
-                bypass: (currentTaskFilter && window._taskMetrics[currentTaskFilter]?.bypass) || latestBypass
-            };
-
-            // 3. Update Global Analytics History (Unfiltered aggregate)
-            if (!window._lastHistoryPush || now - window._lastHistoryPush >= 1000) {
-                window._lastHistoryPush = now;
-                
-                const tasksSnapshot = {};
-                Object.entries(window._taskMetrics).forEach(([id, m]) => {
-                    tasksSnapshot[id] = { rps: m.rps, bps: m.bps, lat: m.lat, s: m.s, w: m.w, e: m.e, t: m.t };
-                });
-
-                historyBuffer.push({
-                    time: now,
-                    bps: totalBps,
-                    rps: totalRps,
-                    lat: avgLat,
-                    s: totalS, w: totalW, e: totalE, t: totalT,
-                    tasks: tasksSnapshot
-                });
-            }
-            
-            // Auto-save history every 15s using worker
-            if (perfWorker && (!window.lastTelemetrySave || now - window.lastTelemetrySave > 15000)) {
-                const dataToSave = historyBuffer.toArray();
-                perfWorker.postMessage({ type: 'serialize', data: dataToSave });
-                window.lastTelemetrySave = now;
-            }
-
-            return snapshot;
-        }
-
-        function flushStateToUi(metrics) {
-            const { totalRps, totalBps, maxLat, avgLat, aggActive, aggTotal, aggWarm, totalS, totalW, totalE, totalT, count, now, bypass } = metrics;
-
-            // Update Global Command Center Cards
-            const rpsEl = document.getElementById('current-rps');
-            const bpsEl = document.getElementById('current-bps');
-            const activeMetrics = Object.values(window._taskMetrics);
-            
-            if (rpsEl) {
-                const impactSum = totalS + totalW + totalE + totalT;
-                if (totalRps === 0 && activeMetrics.length > 0) {
-                    if (impactSum > 0) {
-                        rpsEl.textContent = "Active (Filtering)";
-                        rpsEl.classList.remove('animate-pulse', 'text-slate-500');
-                        rpsEl.classList.add('text-warning');
-                    } else {
-                        rpsEl.textContent = "Telemetry Pending";
-                        rpsEl.classList.add('animate-pulse', 'text-slate-500');
-                        rpsEl.classList.remove('text-warning');
-                    }
-                } else {
-                    rpsEl.textContent = formatHuman(totalRps);
-                    rpsEl.classList.remove('animate-pulse', 'text-slate-500', 'text-warning');
-                }
-                
+            // 5. Update Global Command Center Cards
+            if (document.getElementById('current-rps')) {
+                document.getElementById('current-rps').textContent = formatHuman(totalRps);
                 if (totalRps > peakRPS) {
                     peakRPS = totalRps;
-                    const peakRpsEl = document.getElementById('peak-rps');
-                    if (peakRpsEl) peakRpsEl.textContent = formatHuman(peakRPS);
+                    document.getElementById('peak-rps').textContent = formatHuman(peakRPS);
                 }
             }
 
-            if (bpsEl) {
-                if (totalBps === 0 && activeMetrics.length > 0) {
-                    bpsEl.textContent = "Pending...";
-                    bpsEl.classList.add('animate-pulse', 'text-slate-500');
-                } else {
-                    bpsEl.textContent = formatBytes(totalBps);
-                    bpsEl.classList.remove('animate-pulse', 'text-slate-500');
-                }
-                
+            if (document.getElementById('current-bps')) {
+                document.getElementById('current-bps').textContent = formatBytes(totalBps);
                 if (!window._peakBpsVal) window._peakBpsVal = 0;
                 if (totalBps > window._peakBpsVal) {
                     window._peakBpsVal = totalBps;
-                    const peakBpsEl = document.getElementById('peak-bps');
-                    if (peakBpsEl) peakBpsEl.textContent = formatBytes(window._peakBpsVal);
+                    document.getElementById('peak-bps').textContent = formatBytes(window._peakBpsVal);
                 }
             }
 
-            const currentLatEl = document.getElementById('current-latency');
-            if (currentLatEl) {
-                currentLatEl.textContent = maxLat > 0 ? maxLat.toFixed(1) + 'ms' : '0.0ms';
+            if (document.getElementById('current-latency')) {
+                document.getElementById('current-latency').textContent = maxLat > 0 ? maxLat.toFixed(1) + 'ms' : (latStr === 'TIMEOUT' ? 'TIMEOUT' : '0.0ms');
             }
 
-            // Update Tactical Legend Stats
-            const totalImpact = totalS + totalW + totalE + totalT;
-            document.getElementById('stat-ok').textContent = (totalS || 0).toLocaleString();
-            document.getElementById('stat-waf').textContent = (totalW || 0).toLocaleString();
-            document.getElementById('stat-err').textContent = (totalE || 0).toLocaleString();
-            document.getElementById('stat-tmo').textContent = (totalT || 0).toLocaleString();
-            document.getElementById('impact-total-samples').textContent = totalImpact.toLocaleString();
-            
-            // Calculate Advanced Tactical Metrics
-            const effectiveness = totalImpact > 0 ? Math.round((totalS / totalImpact) * 100) : 100;
-            const mitigation = totalImpact > 0 ? ((totalW / totalImpact) * 100).toFixed(1) : "0.0";
-            const saturation = peakRPS > 0 ? ((totalRps / peakRPS) * 100).toFixed(1) : "0.0";
-
-            const effEl = document.getElementById('combat-effectiveness');
-            if (effEl) {
-               effEl.textContent = effectiveness + '%';
-               // Preserve hud-glow-text and base classes
-               effEl.className = `text-2xl font-mono font-black hud-glow-text leading-none ${effectiveness > 80 ? 'text-white' : effectiveness > 40 ? 'text-warning' : 'text-danger'}`;
-            }
-
-            const mitEl = document.getElementById('mitigation-rate');
-            if (mitEl) mitEl.textContent = mitigation + '%';
-
-            const satEl = document.getElementById('target-saturation');
-            if (satEl) {
-               satEl.textContent = saturation + '%';
-               const satBg = document.getElementById('saturation-bg');
-               if (satBg) satBg.style.width = saturation + '%';
-            }
-            const healthStatusEl = document.getElementById('target-health-status');
-            if (healthStatusEl) {
-                const health = metrics.health || "stable";
-                const healthMap = {
-                    "stable": { label: "Stable", class: "bg-primary/20 text-primary border-primary/30" },
-                    "degraded": { label: "Degraded", class: "bg-warning/20 text-warning border-warning/30" },
-                    "failed": { label: "Failed", class: "bg-danger/20 text-danger border-danger/30" }
-                };
-                const config = healthMap[health] || healthMap["stable"];
-                healthStatusEl.textContent = config.label;
-                healthStatusEl.className = `px-1.5 py-0.5 rounded text-[7px] font-black uppercase tracking-tighter border ${config.class}`;
-            }
-
-            const proxyStatsEl = document.getElementById('proxy-stats');
-            if (proxyStatsEl) {
-                proxyStatsEl.innerText = `${aggActive}/${aggTotal}`;
+            if (document.getElementById('proxy-stats')) {
+                document.getElementById('proxy-stats').innerText = `${aggActive}/${aggTotal}`;
                 const efficiency = aggTotal > 0 ? Math.round((aggActive / aggTotal) * 100) : 0;
-                const proxyEffEl = document.getElementById('proxy-efficiency');
-                if (proxyEffEl) proxyEffEl.innerText = `${efficiency}%`;
-                const proxyWarmEl = document.getElementById('proxy-warm-pool');
-                if (proxyWarmEl) proxyWarmEl.innerText = aggWarm;
+                document.getElementById('proxy-efficiency').innerText = `${efficiency}%`;
             }
+
+            // 6. Update Task-Specific UI Elements in Fleet Grid
+            const rowRps = document.getElementById(`task-rps-${taskId}`);
+            const rowBps = document.getElementById(`task-bps-${taskId}`);
+            const rowLat = document.getElementById(`task-lat-${taskId}`);
+            if (rowRps) rowRps.textContent = rpsStr;
+            if (rowBps) rowBps.textContent = bpsStr;
+            if (rowLat) rowLat.textContent = latStr;
+
+            // 7. Update Global Analytics History (v1.2.2: Store Task-Specific Details)
+            const tasksSnapshot = {};
+            Object.entries(window._taskMetrics).forEach(([id, m]) => {
+                tasksSnapshot[id] = { rps: m.rps, bps: m.bps, lat: m.lat, s: m.s, w: m.w, e: m.e, t: m.t };
+            });
 
             // Update Bypass Sync Visual Indicator
-            const activeEl = document.getElementById('active-bypass-engine');
-            const successEl = document.getElementById('bypass-success-rate');
-            if (activeEl) activeEl.textContent = bypass?.active || 'Auto-Selecting...';
-            if (successEl) {
-                const total = totalS + totalW + totalE + totalT;
-                const rate = total > 0 ? Math.round((totalS / total) * 100) : 0;
-                successEl.textContent = rate + '%';
-            }
-            if (bypass?.scores) {
-                updateEngineRankings(bypass.scores);
-            }
-
             const fleetBypassStatus = document.getElementById('bypass-sync-status');
             const fleetBypassCount = document.getElementById('bypass-fleet-count');
-            const isSyncActive = activeMetrics.some(m => m.rps > 0);
+            const isSyncActive = activeMetrics.some(m => m.rps > 0); // Simplified check
             
             if (fleetBypassStatus) {
                 if (isSyncActive) {
@@ -1126,6 +579,27 @@ const term = document.getElementById('terminal-content');
             }
             if (fleetBypassCount) {
                 fleetBypassCount.textContent = `${activeMetrics.length} Nodes`;
+            }
+
+            historyBuffer.push({
+                time: now,
+                bps: totalBps,
+                rps: totalRps,
+                lat: avgLat,
+                s: totalS, w: totalW, e: totalE, t: totalT,
+                tasks: tasksSnapshot
+            });
+
+            if (historyBuffer.length > MAX_BUFFER_SIZE) historyBuffer.shift();
+            renderCharts();
+            
+            // Auto-save history every 5s
+            if (!window.lastTelemetrySave || now - window.lastTelemetrySave > 5000) {
+                try {
+                    const dataToSave = historyBuffer.length > 2000 ? downsample(historyBuffer, 2000) : historyBuffer;
+                    localStorage.setItem('mhddos_telemetry', JSON.stringify(dataToSave));
+                } catch(e) {}
+                window.lastTelemetrySave = now;
             }
         }
 
@@ -1161,104 +635,64 @@ const term = document.getElementById('terminal-content');
             });
         }
 
-        function appendLog(data, forceLevel = null, taskId = null) {
-            const term = document.getElementById('terminal-content');
-            if (!term) return;
-
-            let logData = {
-                time: new Date().toLocaleTimeString('en-GB', { hour12: false }),
-                level: forceLevel || 'INFO',
-                msg: '',
-                task_id: taskId,
-                type: 'log'
-            };
-
-            // 1. Parse Input
-            if (typeof data === 'string') {
-                if (data.startsWith('{') && data.endsWith('}')) {
-                    try {
-                        const parsed = JSON.parse(data);
-                        logData = { ...logData, ...parsed };
-                    } catch (e) {
-                        logData.msg = data;
-                    }
-                } else {
-                    logData.msg = data;
-                }
-            } else if (typeof data === 'object' && data !== null) {
-                logData = { ...logData, ...data };
-            }
-
-            const msgRaw = logData.msg || '';
-            
-            // Check for multiline
-            const lines = msgRaw.split('\n');
+        function appendLog(msg, type = 'SYSTEM', taskId = null) {
+            if (!msg) return;
+            const lines = msg.split('\n');
             if (lines.length > 1) {
-                lines.forEach(line => appendLog({ ...logData, msg: line }));
+                lines.forEach(line => appendLog(line, type, taskId));
                 return;
             }
 
-            // Distributed C2: Intercept Bypass Sync event
-            if (msgRaw.includes("Shared credentials received")) {
-                showToast("Universal Bypass Sync: Fleet Credentials Updated", "success");
-            }
+            const cleanMsg = msg.replace(/\x1B\[[0-9;]*[mK]/g, '').trim();
+            if (!cleanMsg) return;
 
-            // 2. Clean Message & Strip ANSI
-            let msg = msgRaw.replace(/\x1B\[[0-9;]*[mK]/g, '').trim();
-            if (!msg && logData.type === 'log') return;
-
-            // 3. Handle Telemetry (Update metrics UI, don't print to terminal)
-            const rpsMatch = msg.match(/PPS:\s*([^,]+)/i);
-            const bpsMatch = msg.match(/BPS:\s*([^,]+)/i);
+            const rpsMatch = cleanMsg.match(/PPS:\s*([^,]+)/i);
+            const bpsMatch = cleanMsg.match(/BPS:\s*([^,]+)/i);
+            const latMatch = cleanMsg.match(/Latency:\s*([^,]+)/i);
+            const poolMatch = cleanMsg.match(/Pool:\s*(\d+)\/(\d+)/i);
             
             if (rpsMatch || bpsMatch) {
-                const latMatch = msg.match(/Latency:\s*([^,]+)/i);
-                const poolMatch = msg.match(/Pool:\s*(\d+)\/(\d+)/i);
                 updateMetrics(
-                    logData.task_id || taskId,
-                    rpsMatch ? rpsMatch[1] : null, 
-                    bpsMatch ? bpsMatch[1].split(',')[0].trim() : null, 
-                    latMatch ? latMatch[1] : null,
-                    poolMatch ? poolMatch[1] : null,
-                    poolMatch ? poolMatch[2] : null
+                    taskId,
+                    rpsMatch ? rpsMatch[1] : "0", 
+                    bpsMatch ? bpsMatch[1].split(',')[0].trim() : "0 B", 
+                    latMatch ? latMatch[1] : "0 ms",
+                    poolMatch ? poolMatch[1] : "0",
+                    poolMatch ? poolMatch[2] : "0"
                 );
-                if (logData.type === 'telemetry') return;
+                return;
             }
 
-            // 4. Determine Level & Type styling
-            const level = (logData.level || 'INFO').toUpperCase();
-            const tid = logData.task_id || taskId;
-
-            // Filter logic
-            const matchesLevel = (LOG_LEVELS[level] || 0) >= (LOG_LEVELS[currentLogLevel] || 0);
-            const matchesFilter = (currentLogFilter === 'ALL' || logData.type === currentLogFilter);
-            const matchesTask = (!currentTaskFilter || tid === currentTaskFilter);
-
-            // 5. Create DOM Elements
             const entry = document.createElement('div');
-            entry.className = `log-entry animate-in ${!matchesLevel || !matchesFilter || !matchesTask ? 'hidden' : ''}`;
-            entry.dataset.level = level;
-            entry.dataset.taskId = tid || '';
-            entry.dataset.type = logData.type || 'log';
+            let logType = type;
+            if (cleanMsg.includes("[!]")) logType = 'ERROR';
+            else if (cleanMsg.includes("LAUNCHING") || cleanMsg.includes("DEPLOYED")) logType = 'ATTACK';
+            else if (cleanMsg.includes("[*]")) logType = 'SYSTEM';
 
-            entry.innerHTML = `
-                <span class="log-time">${logData.time}</span>
-                <span class="log-badge badge-${level.toLowerCase()}">${level}</span>
-                ${tid ? `<span class="text-[10px] font-bold text-primary/80 shrink-0">[${tid.toUpperCase()}]</span>` : ''}
-                <span class="log-msg text-${level.toLowerCase()}">${msg}</span>
-            `;
+            const entryLevel = getMsgLevel(cleanMsg);
+            entry.dataset.level = entryLevel;
+            entry.dataset.type = logType;
+            if(taskId) entry.dataset.taskId = taskId;
 
+            const matchesLevel = (LOG_LEVELS[entryLevel] >= LOG_LEVELS[currentLogLevel]);
+            const matchesFilter = (currentLogFilter === 'ALL' || logType === currentLogFilter);
+            const matchesTask = (!currentTaskFilter || taskId === currentTaskFilter);
+
+            if (!(matchesLevel && matchesFilter && matchesTask)) entry.style.display = 'none';
+
+            entry.className = `log-entry flex gap-4 ${logType === 'ERROR' ? 'text-danger' : entryLevel === 'DEBUG' ? 'text-slate-500 opacity-60' : 'text-slate-400'}`;
+            const label = document.createElement('span');
+            label.className = `shrink-0 font-bold w-20 ${logType === 'ERROR' ? 'text-danger' : logType === 'ATTACK' ? 'text-primary' : 'text-slate-600'}`;
+            label.textContent = taskId ? `[${taskId.toUpperCase()}]` : `[${logType}]`;
+            const content = document.createElement('span');
+            content.className = "flex-1 break-all";
+            content.textContent = cleanMsg;
+            entry.appendChild(label);
+            entry.appendChild(content);
             term.appendChild(entry);
             
-            // Auto-scroll
-            if (term.scrollHeight - term.clientHeight <= term.scrollTop + 150) {
-                term.scrollTop = term.scrollHeight;
-            }
-
-            // Cap entries
-            if (term.childNodes.length > 1000) {
-                term.removeChild(term.firstChild);
-            }
+            if (term.scrollHeight - term.clientHeight <= term.scrollTop + 100) term.scrollTop = term.scrollHeight;
+            while (term.childNodes.length > 1000) { term.removeChild(term.firstChild); }
         }
 
         function setLogFilter(filter) {
@@ -1276,92 +710,76 @@ const term = document.getElementById('terminal-content');
         }
 
         async function analyzeTarget() {
-            const target = document.getElementById('target').value;
+            let target = document.getElementById('target').value;
             if (!target) return appendLog("[!] RECON_ERR: Target required for radar scan.", "ERROR");
-            appendLog(`[*] INITIATING RADAR SCAN: Analyzing infrastructure for ${target}...`);
+
+            target = target.trim();
+            if (!target.startsWith('http://') && !target.startsWith('https://')) {
+                target = 'http://' + target;
+            }
             try {
-                const res = await fetch('/api/recon/analyze', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ target })
-                });
-                const data = await res.json();
+                new URL(target);
+            } catch (e) {
+                return appendLog("[!] RECON_ERR: Invalid URL structure.", "ERROR");
+            }
+            document.getElementById('target').value = target;
+
+            appendLog(`[*] INITIATING RADAR SCAN: Analyzing infrastructure for ${target}...`);
+
+            const analyzePromise = fetch('/api/recon/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target })
+            })
+            .then(res => res.json())
+            .then(data => {
                 if (data.status === 'success') {
                     appendLog(`[*] RADAR LOCK: Detected Stack = [${data.server}], HTTP ${data.status_code}`);
                     appendLog(`[*] TACTICAL RECOMMENDATION: Applying ${data.recommendation} sequence.`);
                     document.getElementById('method').value = data.recommendation;
                     updateVisibility();
                     const badgeContainer = document.getElementById('recon-waf-badge');
-                    if (badgeContainer) {
-                        const wafClass = (data.server || '').toLowerCase().replace(/[\/\s+]/g, '');
-                        badgeContainer.innerHTML = `<span class="bg-primary/20 text-primary px-2 py-0.5 rounded border border-primary/40 text-[8px] font-black uppercase tracking-widest animate-pulse">${data.server} PROTECTED</span>`;
-                    }
+                    const wafClass = (data.server || '').toLowerCase().replace(/[\/\s]/g, '');
+                    badgeContainer.innerHTML = `<span class="recon-badge badge-${wafClass}">${data.server} PROTECTED</span>`;
                 } else { appendLog(`[!] RECON_FAIL: ${data.message}`, "ERROR"); }
-            } catch (e) { appendLog(`[!] API_FAIL: ${e.message}`, "ERROR"); }
+            })
+            .catch(e => appendLog(`[!] API_FAIL: ${e.message}`, "ERROR"));
 
-            try {
-                const protocol = window.location.protocol;
-                const host = window.location.host;
-                const geoRes = await fetch(`${protocol}//${host}/api/recon/geo?target=${encodeURIComponent(target)}`);
-                const geoData = await geoRes.json();
+            const geoPromise = fetch(`/api/recon/geo?target=${encodeURIComponent(target)}`)
+            .then(res => res.json())
+            .then(geoData => {
                 if (geoData.status === 'success') {
-                    const ispEl = document.getElementById('geo-isp');
-                    const locEl = document.getElementById('geo-loc');
-                    if (ispEl) ispEl.textContent = geoData.isp;
-                    if (locEl) locEl.textContent = `${geoData.city}, ${geoData.country}`;
+                    document.getElementById('geo-isp').textContent = geoData.isp;
+                    document.getElementById('geo-loc').textContent = `${geoData.city}, ${geoData.country}`;
                     initMap(geoData.lat, geoData.lon);
                 }
-            } catch (e) { console.error("Geo API Failure:", e); }
+            })
+            .catch(e => console.error(e));
+
+            await Promise.all([analyzePromise, geoPromise]);
         }
-        window.analyzeTarget = analyzeTarget;
 
         async function startAttack() {
-            if (IS_REPLAY_MODE) {
-                showToast("Replay mode is read-only. Remove ?mode=replay to use live controls.", 'info');
-                return;
-            }
-            
-            const getVal = (id, def = "") => {
-                const el = document.getElementById(id);
-                return el ? el.value : def;
-            };
-            
-            const getCheck = (id) => {
-                const el = document.getElementById(id);
-                return el ? el.checked : false;
-            };
-
-            const target = getVal('target');
+            const target = document.getElementById('target').value;
             if (!target) return appendLog("[!] VALIDATION_FAILED: Destination target required.", "ERROR");
-            
             setAppState(STATE.STARTING);
-            
+            const params = {
+                target: target,
+                method: document.getElementById('method').value,
+                threads: parseInt(document.getElementById('threads').value),
+                duration: parseInt(document.getElementById('duration').value),
+                proxy_type: document.getElementById('proxy_type').value,
+                proxy_list: document.getElementById('auto_harvest').checked ? "auto_harvest.txt" : document.getElementById('proxy_list').value,
+                rpc: parseInt(document.getElementById('rpc').value),
+                reflector: document.getElementById('reflector').value,
+                proxy_refresh: document.getElementById('auto_refresh').checked ? parseInt(document.getElementById('proxy_refresh').value) : 0,
+                auto_harvest: document.getElementById('auto_harvest').checked,
+                smart_rpc: document.getElementById('smart_rpc').checked,
+                autoscale: document.getElementById('auto_scale').checked,
+                evasion: document.getElementById('advanced_evasion').checked,
+                distribute_to_workers: document.getElementById('distribute_to_workers').checked
+            };
             try {
-                const params = {
-                    target: target,
-                    method: getVal('method'),
-                    threads: parseInt(getVal('threads', "100")),
-                    duration: parseInt(getVal('duration', "3600")),
-                    proxy_type: getVal('proxy_type', "SOCKS5"),
-                    proxy_list: getCheck('auto_harvest') ? "auto_harvest.txt" : getVal('proxy_list', "proxies.txt"),
-                    rpc: parseInt(getVal('rpc', "100")),
-                    reflector: getVal('reflector', "reflector.txt"),
-                    proxy_refresh: getCheck('auto_refresh') ? parseInt(getVal('proxy_refresh', "15")) : 0,
-                    auto_harvest: getCheck('auto_harvest'),
-                    smart_rpc: getCheck('smart_rpc'),
-                    autoscale: getCheck('auto_scale'),
-                    evasion: getCheck('advanced_evasion'),
-                    behavioral_intensity: parseInt(getVal('behavioral_intensity', "15")),
-                    distribute_to_workers: getCheck('distribute_to_workers'),
-                    // New Bypass Settings
-                    adaptive_learning: getCheck('adaptive_scoring'),
-                    flaresolverr_url: getVal('flaresolverr_url', "http://localhost:8191/v1"),
-                    engine_sequence: Array.from(document.querySelectorAll('#engine-sequence-list > div span:first-child')).map(s => {
-                        const text = s.innerText || "";
-                        return text.includes('. ') ? text.split('. ')[1] : text;
-                    }).filter(t => t).join(',')
-                };
-
                 const res = await fetch('/api/attack/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1386,10 +804,6 @@ const term = document.getElementById('terminal-content');
         }
 
         async function stopAttack(taskId = null) {
-            if (IS_REPLAY_MODE) {
-                showToast("Replay mode is read-only. No live task is running.", 'info');
-                return;
-            }
             if (!taskId) {
                 showToast("Task ID missing for termination.", 'warning');
                 return;
@@ -1436,20 +850,12 @@ const term = document.getElementById('terminal-content');
         }
 
         async function stopAllAttacks() {
-            if (IS_REPLAY_MODE) {
-                showToast("Replay mode is read-only. No live task is running.", 'info');
-                return;
-            }
             setAppState(STATE.STOPPING);
             showToast("Initiating global termination sequence...", 'warning');
             try {
                 const res = await fetch('/api/attack/status');
                 const data = await res.json();
                 if(data.status === 'success' && data.active_tasks) {
-                    if (data.active_tasks.length === 0) {
-                        setAppState(STATE.IDLE);
-                        return;
-                    }
                     for(let t of data.active_tasks) {
                         await fetch('/api/attack/stop', {
                             method: 'POST',
@@ -1461,17 +867,15 @@ const term = document.getElementById('terminal-content');
                 setTimeout(refreshTasks, 1000);
             } catch(e) {
                  appendLog(`[!] API_FAIL: ${e.message}`, "ERROR");
-                 setAppState(STATE.RUNNING); // Revert to running if API failed
-                 showToast("Termination protocol disrupted.", 'error');
             }
         }
-        window.stopAllAttacks = stopAllAttacks;
 
         async function refreshTasks() {
             try {
                 const res = await fetch('/api/attack/status');
                 const data = await res.json();
                 if (data.status === 'success') {
+                    window.lastActiveTasks = data.active_tasks;
                     renderTasksList(data.active_tasks);
                     if (data.active_tasks.length === 0) {
                         setAppState(STATE.IDLE);
@@ -1498,42 +902,51 @@ const term = document.getElementById('terminal-content');
 
             if(countBadge) countBadge.textContent = tasks.length;
 
-            // Update Global Telemetry State
+            // Update Active Threads & Target
             let totalThreads = 0;
             let currentTarget = "None";
             if (tasks.length > 0) {
                 totalThreads = tasks.reduce((sum, t) => sum + (t.threads || 0), 0);
-                currentTarget = tasks.length === 1 ? tasks[0].target : `${tasks.length} Vectors Active`;
-                const targetStatus = document.getElementById('target-status');
-                if(targetStatus) {
-                    targetStatus.textContent = "Engaged";
-                    targetStatus.className = "size-1.5 rounded-full bg-danger pulse-active";
-                }
+                if (tasks.length === 1) currentTarget = tasks[0].target;
+                else currentTarget = "Multiple Targets";
+                document.getElementById('target-status').textContent = "Engaged";
+                document.getElementById('target-status').className = "text-danger";
             } else {
-                const targetStatus = document.getElementById('target-status');
-                if(targetStatus) {
-                    targetStatus.textContent = "Standby";
-                    targetStatus.className = "size-1.5 rounded-full bg-warning";
-                }
+                currentTarget = "None";
+                document.getElementById('target-status').textContent = "Standby";
+                document.getElementById('target-status').className = "text-warning";
             }
 
-            const threadEl = document.getElementById('current-threads');
-            if(threadEl) threadEl.textContent = totalThreads;
-
-            const targetEl = document.getElementById('current-target');
-            if(targetEl) targetEl.textContent = currentTarget;
+            document.getElementById('current-threads').textContent = totalThreads;
+            if (totalThreads > peakThreads) {
+                peakThreads = totalThreads;
+                document.getElementById('peak-threads').textContent = peakThreads;
+            }
+            document.getElementById('current-target').textContent = currentTarget;
 
             if (!container) return;
 
+            // Optimization: Only re-render if task list structure changed
+            const currentTasksJson = JSON.stringify({ filter: currentTaskFilter, tasks: tasks.map(t => ({ id: t.task_id, target: t.target, method: t.method })) });
+            if (currentTasksJson === lastTasksJson && container.children.length > 0) {
+                // Just update metrics inside existing cards
+                tasks.forEach(t => {
+                    const metrics = window._taskMetrics[t.task_id] || { rpsStr: '0', bpsStr: '0 B', latStr: '0ms' };
+                    const rpsEl = document.getElementById(`task-rps-${t.task_id}`);
+                    const bpsEl = document.getElementById(`task-bps-${t.task_id}`);
+                    const latEl = document.getElementById(`task-lat-${t.task_id}`);
+                    if (rpsEl) rpsEl.textContent = metrics.rpsStr;
+                    if (bpsEl) bpsEl.textContent = metrics.bpsStr;
+                    if (latEl) latEl.textContent = metrics.latStr;
+                });
+                return; 
+            }
+            lastTasksJson = currentTasksJson;
+
             if (tasks.length === 0) {
                 container.innerHTML = '';
-                if(emptyState) {
-                    emptyState.classList.remove('hidden');
-                    container.appendChild(emptyState);
-                }
+                if(emptyState) container.appendChild(emptyState);
                 return;
-            } else if (emptyState) {
-                emptyState.classList.add('hidden');
             }
 
             container.innerHTML = '';
@@ -1545,84 +958,124 @@ const term = document.getElementById('terminal-content');
 
                 const row = document.createElement('div');
                 row.setAttribute('data-task-row-id', t.task_id);
-                row.className = `glass-card border rounded-lg p-4 flex flex-col gap-3 transition-all group relative overflow-hidden ${isIsolated ? 'border-primary shadow-[0_0_20px_rgba(16,185,129,0.2)]' : 'border-emerald-500/10 hover:border-emerald-500/30'}`;
+                row.onclick = () => setTaskFilter(t.task_id);
+                
+                // Glassmorphism and premium tactical HUD effects
+                row.className = `glass-card backdrop-blur-xl bg-surface/60 border rounded-xl p-5 flex flex-col gap-4 transition-all duration-300 ease-out group relative overflow-hidden ${isIsolated ? 'border-primary shadow-[0_0_30px_rgba(16,185,129,0.25)] scale-[1.02] ring-1 ring-primary/50' : 'border-white/5 hover:border-primary/40 hover:bg-surface-bright/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.15)] cursor-pointer'}`;
 
                 row.innerHTML = `
-                    <!-- HUD Scan Overlay -->
-                    <div class="absolute inset-0 scanline opacity-[0.03] pointer-events-none"></div>
-                    <div class="absolute inset-0 bg-gradient-to-br from-primary/[0.02] to-transparent pointer-events-none"></div>
+                    <!-- HUD Scan Overlay & Gradient -->
+                    <div class="absolute inset-0 scanline opacity-10 pointer-events-none mix-blend-overlay"></div>
+                    <div class="absolute inset-0 bg-gradient-to-br from-primary/[0.05] via-transparent to-transparent pointer-events-none transition-opacity duration-300 ${isIsolated ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}"></div>
+                    <div class="absolute -right-12 -top-12 size-40 bg-primary/5 blur-3xl pointer-events-none rounded-full transition-opacity duration-500 ${isIsolated ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}"></div>
 
-                    <div class="flex items-center justify-between relative z-10">
-                        <div class="flex items-center gap-3 min-w-0">
+                    <div class="flex items-start justify-between relative z-10">
+                        <div class="flex items-center gap-4 min-w-0 flex-1 pr-4">
                             <div class="relative">
-                                <div class="size-9 shrink-0 rounded bg-background border border-emerald-500/20 flex items-center justify-center transition-all ${isIsolated ? 'neon-border-glow border-primary' : 'group-hover:border-primary/40'}">
-                                    <span class="material-symbols-rounded text-emerald-500 text-xl ${isIsolated ? 'animate-pulse' : ''}">${isIsolated ? 'biotech' : 'target'}</span>
+                                <!-- Isolated Tactical Icon Box -->
+                                <div class="size-12 shrink-0 rounded-xl bg-background/90 border border-white/10 flex items-center justify-center transition-all duration-300 shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] ${isIsolated ? 'border-primary bg-primary/10 shadow-[0_0_20px_rgba(16,185,129,0.4)]' : 'group-hover:border-primary/50 group-hover:bg-primary/5'}">
+                                    <div class="absolute inset-0 scanline opacity-20 pointer-events-none"></div>
+                                    <span class="material-symbols-rounded text-2xl drop-shadow-[0_0_8px_rgba(16,185,129,0.6)] transition-all duration-300 ${isIsolated ? 'text-primary scale-110' : 'text-slate-400 group-hover:text-primary'}">${isIsolated ? 'biotech' : 'track_changes'}</span>
                                 </div>
-                                ${!isIsolated ? '<div class="absolute -top-1 -right-1 size-2 bg-danger rounded-full animate-pulse shadow-[0_0_5px_rgba(239,68,68,0.8)]"></div>' : ''}
+                                ${!isIsolated ? '<div class="absolute -bottom-1 -right-1 size-3 bg-danger rounded-full animate-pulse border-2 border-surface shadow-[0_0_10px_rgba(239,68,68,0.8)]"></div>' : ''}
                             </div>
-                            <div class="min-w-0">
-                                <div class="text-[10px] font-black text-emerald-500/50 uppercase tracking-[0.2em] leading-none mb-1">Vector Identification</div>
-                                <div class="text-[12px] font-mono font-bold text-slate-100 truncate max-w-[200px]">${t.target}</div>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-2 mb-1.5">
+                                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] leading-none">
+                                        Vector <span class="text-primary font-mono bg-primary/10 px-1.5 py-0.5 rounded ml-1 border border-primary/20">${t.task_id.substring(0,8)}</span>
+                                    </div>
+                                    ${isIsolated ? '<div class="px-2 py-0.5 bg-primary/20 border border-primary/40 rounded text-[8px] font-black text-primary tracking-[0.2em] uppercase animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.2)]">ISOLATED_STREAM</div>' : ''}
+                                </div>
+                                <div class="text-sm font-mono font-bold text-white truncate max-w-full drop-shadow-sm group-hover:text-emerald-50 transition-colors flex items-center gap-2">
+                                    <span class="size-1.5 rounded-full bg-primary/50"></span>
+                                    ${t.target}
+                                </div>
                             </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <div class="text-right hidden sm:block">
-                                <div class="text-[8px] font-black text-slate-500 uppercase tracking-widest">Protocol</div>
-                                <div class="text-[10px] font-mono font-bold text-primary">${t.method}</div>
+                        <div class="flex flex-col items-end gap-3 shrink-0">
+                            <div class="px-3 py-1.5 bg-primary/10 border border-primary/30 rounded-lg text-[10px] font-mono font-black text-primary shadow-[inset_0_0_10px_rgba(16,185,129,0.15)] flex items-center gap-2 group-hover:border-primary/50 transition-colors">
+                                <span class="size-2 rounded-full bg-primary animate-[pulse_1.5s_infinite]"></span>
+                                ${t.method}
                             </div>
-                            <button onclick="event.stopPropagation(); window.stopAttack('${t.task_id}')" data-stop-id="${t.task_id}" class="size-9 bg-danger/10 hover:bg-danger text-danger hover:text-white border border-danger/20 hover:border-danger/50 rounded flex items-center justify-center transition-all shadow-lg group/purge">
-                                <span class="material-symbols-rounded text-lg group-hover/purge:rotate-90 transition-transform">close</span>
+                            <button onclick="event.stopPropagation(); stopAttack('${t.task_id}')" data-stop-id="${t.task_id}" class="size-9 bg-surface border border-danger/30 hover:bg-danger text-danger hover:text-white hover:border-danger rounded-lg flex items-center justify-center transition-all duration-300 shadow-[0_0_15px_rgba(239,68,68,0.1)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:scale-110 group/purge relative overflow-hidden" title="Purge Vector">
+                                <div class="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent opacity-0 group-hover/purge:opacity-100 pointer-events-none transition-opacity"></div>
+                                <span class="material-symbols-rounded text-xl group-hover/purge:rotate-180 transition-transform duration-500">close</span>
                             </button>
                         </div>
                     </div>
 
-                    <!-- Metrics Matrix -->
-                    <div class="grid grid-cols-3 gap-1 p-0.5 bg-emerald-500/5 rounded border border-emerald-500/10 relative z-10">
-                        <div class="bg-background/40 p-2 rounded-sm text-center">
-                            <div class="text-[7px] font-black text-slate-500 uppercase tracking-tighter mb-0.5">Velocity</div>
-                            <div id="task-rps-${t.task_id}" class="text-[11px] font-mono font-bold text-emerald-400 neon-glow">${metrics.rpsStr}</div>
+                    <!-- HUD Metrics Grid -->
+                    <div class="grid grid-cols-3 gap-3 mt-1 relative z-10">
+                        <div class="bg-black/60 p-3 rounded-xl border border-white/5 shadow-inner hover:border-emerald-500/40 transition-all duration-300 group/metric">
+                            <div class="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
+                                <span class="material-symbols-rounded text-[11px] text-emerald-500/60 group-hover/metric:text-emerald-400 transition-colors">speed</span> VELOCITY
+                            </div>
+                            <div id="task-rps-${t.task_id}" class="text-sm font-mono font-black text-emerald-400 neon-glow drop-shadow-[0_0_8px_rgba(52,211,153,0.6)]">${metrics.rpsStr}</div>
                         </div>
-                        <div class="bg-background/40 p-2 rounded-sm text-center border-x border-emerald-500/10">
-                            <div class="text-[7px] font-black text-slate-500 uppercase tracking-tighter mb-0.5">Throughput</div>
-                            <div id="task-bps-${t.task_id}" class="text-[11px] font-mono font-bold text-secondary">${metrics.bpsStr}</div>
+                        <div class="bg-black/60 p-3 rounded-xl border border-white/5 shadow-inner hover:border-secondary/40 transition-all duration-300 group/metric">
+                            <div class="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
+                                <span class="material-symbols-rounded text-[11px] text-secondary/60 group-hover/metric:text-secondary transition-colors">swap_vert</span> THRUPUT
+                            </div>
+                            <div id="task-bps-${t.task_id}" class="text-sm font-mono font-black text-secondary drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]">${metrics.bpsStr}</div>
                         </div>
-                        <div class="bg-background/40 p-2 rounded-sm text-center">
-                            <div class="text-[7px] font-black text-slate-500 uppercase tracking-tighter mb-0.5">Latency</div>
-                            <div id="task-lat-${t.task_id}" class="text-[11px] font-mono font-bold text-warning">${metrics.latStr}</div>
+                        <div class="bg-black/60 p-3 rounded-xl border border-white/5 shadow-inner hover:border-warning/40 transition-all duration-300 group/metric">
+                            <div class="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
+                                <span class="material-symbols-rounded text-[11px] text-warning/60 group-hover/metric:text-warning transition-colors">timer</span> LATENCY
+                            </div>
+                            <div id="task-lat-${t.task_id}" class="text-sm font-mono font-black text-warning drop-shadow-[0_0_8px_rgba(245,158,11,0.6)]">${metrics.latStr}</div>
                         </div>
                     </div>
 
-                    <!-- Progress & Timeline -->
-                    <div class="space-y-1.5 relative z-10 px-1">
-                        <div class="flex items-center justify-between text-[8px] font-black uppercase tracking-widest">
-                            <div class="flex gap-3">
-                                <span class="text-slate-500">ELAPSED: <span class="text-slate-200 tabular-nums">${t.elapsed}s</span></span>
-                                <span class="text-slate-500">REMAINING: <span class="text-emerald-500 tabular-nums">${formatDuration(timeLeft)}</span></span>
+                    <!-- Progress & Timeline Matrix -->
+                    <div class="space-y-3 relative z-10 px-1 mt-1">
+                        <div class="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.2em]">
+                            <div class="flex gap-5">
+                                <span class="text-slate-500 flex items-center gap-2"><span class="material-symbols-rounded text-[12px] text-slate-600">schedule</span> RUNTIME <span class="task-elapsed text-slate-100 tabular-nums ml-0.5">${t.elapsed}S</span></span>
+                                <span class="text-slate-500 flex items-center gap-2"><span class="material-symbols-rounded text-[12px] text-primary/60">hourglass_bottom</span> T-MINUS <span class="task-remaining text-emerald-400 tabular-nums ml-0.5 font-bold">${formatDuration(timeLeft)}</span></span>
                             </div>
-                            <span class="text-primary">${Math.round(progress)}%</span>
+                            <div class="flex items-center gap-2 bg-primary/10 px-2 py-1 rounded-md border border-primary/20">
+                                <span class="task-progress-pct text-primary font-mono font-black tracking-tighter">${Math.round(progress)}%</span>
+                            </div>
                         </div>
-                        <div class="h-1 bg-white/5 rounded-full overflow-hidden flex">
-                            <div class="h-full bg-primary shadow-[0_0_10px_#10b981] transition-all duration-1000" style="width: ${progress}%"></div>
+                        <div class="h-2.5 bg-black/80 rounded-full overflow-hidden flex border border-white/10 shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] relative">
+                            <!-- Tactical Grid Track -->
+                            <div class="absolute inset-0 grid-pattern opacity-10 pointer-events-none"></div>
+                            <div class="task-progress-bar h-full bg-gradient-to-r from-primary-dim via-primary to-primary shadow-[0_0_15px_rgba(16,185,129,0.8)] transition-all duration-1000 ease-out relative" style="width: ${progress}%">
+                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent w-full animate-[shimmer_2s_infinite]"></div>
+                                <div class="absolute right-0 top-0 bottom-0 w-px bg-white/50 shadow-[0_0_10px_white]"></div>
+                            </div>
                         </div>
                     </div>
                 `;
+                    </div>
 
-                row.onclick = () => {
-                    window.setTaskFilter(t.task_id);
-                };
-
+                    <div class="flex items-center justify-between relative z-10 px-1">
+                        <div class="flex gap-4">
+                            <div>
+                                <div class="text-[7px] font-black uppercase tracking-widest text-slate-500 mb-0.5">Elapsed</div>
+                                <div class="text-[9px] font-mono font-black text-white tabular-nums">${t.elapsed}s</div>
+                            </div>
+                            <div>
+                                <div class="text-[7px] font-black uppercase tracking-widest text-slate-500 mb-0.5">Remaining</div>
+                                <div class="text-[9px] font-mono font-black text-primary-light tabular-nums">${formatDuration(timeLeft)}</div>
+                            </div>
+                        </div>
+                        <div class="flex-1 max-w-[100px] ml-4">
+                            <div class="h-1 bg-white/5 rounded-full overflow-hidden">
+                                <div class="h-full bg-primary shadow-[0_0_8px_#10b981]" style="width: ${progress}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
                 container.appendChild(row);
-            });
-        }
+            });        }
+
         function updateVisibility() {
             const method = document.getElementById('method').value;
-            const L7 = ["BYPASS", "CFB", "GET", "POST", "OVH", "STRESS", "DYN", "SLOW", "HEAD", "NULL", "COOKIE", "PPS", "EVEN", "GSB", "DGB", "AVB", "CFBUAM", "APACHE", "XMLRPC", "BOT", "BOMB", "DOWNLOADER", "KILLER", "TOR", "RHEX", "STOMP", "IMPERSONATE", "HTTP3", "BROWSER", "HYBRID", "BEHAVIOR"];
+            const L7 = ["BYPASS", "CFB", "GET", "POST", "OVH", "STRESS", "DYN", "SLOW", "HEAD", "NULL", "COOKIE", "PPS", "EVEN", "GSB", "DGB", "AVB", "CFBUAM", "APACHE", "XMLRPC", "BOT", "BOMB", "DOWNLOADER", "KILLER", "TOR", "RHEX", "STOMP", "IMPERSONATE", "HTTP3"];
             const L4_AMP = ["MEM", "NTP", "DNS", "RDP", "ARD", "CLDAP", "CHAR"];
-            const rpcContainer = document.getElementById('rpc-container');
-            const reflectorContainer = document.getElementById('reflector-container');
-            
-            if (rpcContainer) rpcContainer.style.display = L7.includes(method) ? 'block' : 'none';
-            if (reflectorContainer) reflectorContainer.style.display = L4_AMP.includes(method) ? 'block' : 'none';
+            document.getElementById('rpc-container').style.display = L7.includes(method) ? 'block' : 'none';
+            document.getElementById('reflector-container').style.display = L4_AMP.includes(method) ? 'block' : 'none';
         }
 
         function toggleRefreshDropdown() {
@@ -1644,65 +1097,35 @@ const term = document.getElementById('terminal-content');
             }
         }
 
-        function toggleBehavioralSettings() {
-            const checked = document.getElementById('advanced_evasion').checked;
-            const settings = document.getElementById('behavioral-settings');
-            const parent = document.getElementById('mod-payload');
-            
-            if (checked) {
-                settings.classList.remove('hidden');
-                // Force parent expansion
-                if (parent && !parent.classList.contains('collapsed')) {
-                    parent.style.maxHeight = 'none'; 
-                }
-                setTimeout(() => settings.classList.add('opacity-100'), 10);
-            } else {
-                settings.classList.remove('opacity-100');
-                setTimeout(() => {
-                    settings.classList.add('hidden');
-                    // Restore calculated height if we want to keep transitions working for collapse
-                    if (parent && !parent.classList.contains('collapsed')) {
-                        parent.style.maxHeight = parent.scrollHeight + 'px';
-                    }
-                }, 300);
-            }
-            }
-
-            function saveToMemory() {
-            window.memoryFields.forEach(id => {
+        const memoryFields = ['target', 'method', 'threads', 'duration', 'proxy_type', 'proxy_list', 'rpc', 'reflector', 'auto_refresh', 'proxy_refresh', 'auto_harvest', 'smart_rpc', 'auto_scale', 'advanced_evasion', 'distribute_to_workers'];
+        function saveToMemory() {
+            memoryFields.forEach(id => {
                 const el = document.getElementById(id);
                 if(el) localStorage.setItem('mhddos_gui_v113_' + id, el.type === 'checkbox' ? el.checked : el.value);
             });
-            }
-            window.saveToMemory = saveToMemory;
+        }
 
-            function loadFromMemory() {
-            window.memoryFields.forEach(id => {
+        function loadFromMemory() {
+            memoryFields.forEach(id => {
                 const val = localStorage.getItem('mhddos_gui_v113_' + id);
                 if (val !== null) {
                     const el = document.getElementById(id);
                     if (el) {
                         if (el.type === 'checkbox') el.checked = (val === 'true');
-                        else {
-                            el.value = val;
-                            if (id === 'behavioral_intensity') {
-                                const valEl = document.getElementById('intensity-val');
-                                if (valEl) valEl.textContent = val + '%';
-                            }
-                        }
+                        else el.value = val;
                     }
                 }
             });
             // Attach auto-save listeners to all fields
-            window.memoryFields.forEach(id => {
+            memoryFields.forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
-                    const eventType = (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'number' || el.type === 'range') ? 'change' : 'input';
+                    const eventType = (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'number') ? 'change' : 'input';
                     el.addEventListener(eventType, saveToMemory);
                 }
             });
-            }
-            window.loadFromMemory = loadFromMemory;
+        }
+
         async function checkC2Status() {
             document.getElementById('c2-node-id').textContent = 'C2_MASTER';
             document.getElementById('c2-node-id').className = 'text-xs font-mono font-bold text-secondary';
@@ -1750,110 +1173,6 @@ const term = document.getElementById('terminal-content');
                 }
             } catch(e) { console.error("Error fetching C2 nodes:", e); }
         }
-        // --- Render Pipeline & Batching ---
-        let telemetryQueue = [];
-        let renderScheduled = false;
-
-        let lastRenderTime = 0;
-        function renderLoop(time) {
-            if (time - lastRenderTime < 125) {
-                renderScheduled = false;
-                scheduleRender();
-                return;
-            }
-            lastRenderTime = time;
-
-            const loopStart = performance.now();
-            
-            // 1. Ingest pending messages (O(1) reference swap)
-            let batch = [];
-            if (telemetryQueue.length > 0) {
-                batch = telemetryQueue;
-                telemetryQueue = [];
-            }
-
-            if (batch.length > 0) {
-                if (batch.length > benchmarkState.maxQueueDepth) {
-                    benchmarkState.maxQueueDepth = batch.length;
-                }
-                for (const data of batch) {
-                    benchmarkState.processedEnvelopes++;
-                    if (data.type === 'batch') {
-                        if (data.items && Array.isArray(data.items)) {
-                            for (let item of data.items) {
-                                let parsedItem = typeof item === 'string' ? JSON.parse(item) : item;
-                                handleRealtimeEnvelope(parsedItem);
-                            }
-                        }
-                    } else {
-                        handleRealtimeEnvelope(data);
-                    }
-                }
-            }
-
-            // 2. Reduce state and calculate aggregates
-            const metrics = updateGlobalMetrics();
-
-            // 3. Flush updates to DOM/Charts
-            benchmarkState.chartFlushCount++;
-            flushStateToUi(metrics);
-            renderCharts();
-            updateFleetDashboard();
-            
-            if (APP_RUNTIME.report) {
-                updateBenchmarkOverlay(performance.now() - loopStart);
-            }
-            
-            renderScheduled = false;
-            // Gap 1 Fix: Only self-reschedule if we have pending data or replay is ACTIVE
-            if (telemetryQueue.length > 0 || (IS_REPLAY_MODE && replayActive)) {
-                scheduleRender();
-            }
-        }
-
-        function updateBenchmarkOverlay(renderMs) {
-            let overlay = document.getElementById('benchmark-overlay');
-            if (!overlay) {
-                overlay = document.createElement('div');
-                overlay.id = 'benchmark-overlay';
-                overlay.className = 'fixed bottom-4 left-4 bg-black/80 border border-primary/30 p-3 rounded-lg font-mono text-[9px] text-primary z-[9999] pointer-events-none shadow-[0_0_20px_rgba(16,185,129,0.2)]';
-                document.body.appendChild(overlay);
-            }
-            
-            benchmarkState.renderTimes.push(renderMs);
-            if (benchmarkState.renderTimes.length > 60) benchmarkState.renderTimes.shift();
-            const avgRender = benchmarkState.renderTimes.reduce((a,b)=>a+b,0) / benchmarkState.renderTimes.length;
-            
-            overlay.innerHTML = `
-                <div class="text-white font-black mb-1 underline">PERF_DIAGNOSTICS</div>
-                <div>ENVELOPES: ${benchmarkState.processedEnvelopes}</div>
-                <div>AVG_RENDER: ${avgRender.toFixed(2)}ms</div>
-                <div>MAX_Q_DEPTH: ${benchmarkState.maxQueueDepth}</div>
-                <div>FLUSH_COUNT: ${benchmarkState.chartFlushCount}</div>
-                <div>Q_CURRENT: ${telemetryQueue.length}</div>
-            `;
-        }
-
-        function updateFleetDashboard() {
-            // Update individual task cards metrics without full re-render
-            // This reads from the latest state in window._taskMetrics
-            Object.entries(window._taskMetrics).forEach(([taskId, metrics]) => {
-                const rpsEl = document.getElementById(`task-rps-${taskId}`);
-                const bpsEl = document.getElementById(`task-bps-${taskId}`);
-                const latEl = document.getElementById(`task-lat-${taskId}`);
-                if (rpsEl) rpsEl.textContent = metrics.rpsStr || "0";
-                if (bpsEl) bpsEl.textContent = metrics.bpsStr || "0 B";
-                if (latEl) latEl.textContent = metrics.latStr || "0ms";
-            });
-        }
-
-        function scheduleRender() {
-            if (!renderScheduled) {
-                renderScheduled = true;
-                requestAnimationFrame(renderLoop);
-            }
-        }
-
         async function setupWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${window.location.host}/ws/logs`);
@@ -1864,30 +1183,34 @@ const term = document.getElementById('terminal-content');
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-
-                    // Auto-transition state if we see engine activity
-                    if (data.msg) {
-                        const m = data.msg;
-                        if (m.includes("[*]") || m.includes("Resource:") || m.includes("COMMAND LAUNCHED") || m.includes("PROCESS_SPAWNED")) {
-                            if (currentAppState === 'starting' || currentAppState === 'idle') {
-                                setAppState('running');
-                                refreshTasks();
-                            }
+                    if(data.task_id) {
+                        if (data.type === 'impact') {
+                            updateMetrics(
+                                data.task_id, 
+                                "0", "0 B", "0 ms", "0", "0", 
+                                data.data
+                            );
+                            return;
                         }
-                        // Recovery from termination hang
-                        if (m.includes("COMMAND TERMINATED") || m.includes("STOPPED")) {
-                            if (currentAppState === 'stopping') {
-                                setTimeout(refreshTasks, 500);
-                            }
+                        
+                        appendLog(data.msg, 'SYSTEM', data.task_id);
+                        if (data.msg.includes("COMMAND DEPLOYED")) {
+                            setAppState(STATE.RUNNING);
+                            refreshTasks();
+                        }
+                        if (data.msg.includes("COMMAND TERMINATED")) {
+                            setTimeout(refreshTasks, 1000);
                         }
                     }
-
-                    telemetryQueue.push(data);
-                    scheduleRender();
                 } catch(e) {
-                    handleRawRealtimeText(event.data);
+                    // Fallback for non-JSON logs
+                    const msg = event.data;
+                    appendLog(msg);
+                    if (msg.includes("COMMAND DEPLOYED")) setAppState(STATE.RUNNING);
+                    if (msg.includes("COMMAND TERMINATED")) setTimeout(refreshTasks, 1000);
                 }
-            };            ws.onclose = () => {
+            };
+            ws.onclose = () => {
                 document.getElementById('connection-status').className = 'size-2 rounded-full bg-danger pulse-active';
                 document.getElementById('header-status-text').textContent = "OFFLINE_RECONNECTING";
                 setTimeout(setupWebSocket, 3000);
@@ -1916,29 +1239,12 @@ const term = document.getElementById('terminal-content');
             const container = document.getElementById('config-sources-container');
             modal.classList.remove('hidden');
             setTimeout(() => { modal.classList.remove('opacity-0'); content.classList.remove('translate-y-4'); }, 10);
-            container.innerHTML = '<div class="text-center text-emerald-500/50 py-4"><span class="material-symbols-rounded animate-spin text-primary">refresh</span></div>';
-            
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3000);
-            
+            container.innerHTML = '<div class="text-center text-slate-500 py-4"><span class="material-symbols-rounded animate-spin">refresh</span></div>';
             try {
-                const res = await fetch('/api/config/proxies?t=' + Date.now(), { signal: controller.signal });
-                clearTimeout(timeoutId);
-                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                const res = await fetch('/api/config/proxies');
                 const data = await res.json();
-                if (data.status === 'success') {
-                    renderConfigSources(data.providers || []);
-                } else {
-                    renderConfigSources([]);
-                    showToast(`Warning: ${data.message || 'Unknown error loading proxies'}`, 'warning');
-                }
-            } catch (e) { 
-                clearTimeout(timeoutId);
-                console.error("Proxy Config Fetch Error:", e); 
-                container.innerHTML = `<div class="text-left text-danger py-4 text-[10px] font-mono">DEBUG ERROR: ${e.name} - ${e.message}<br>Stack: ${e.stack}</div>`;
-                renderConfigSources([]);
-                showToast("Operating in offline mode. Changes will not be saved to backend.", 'warning');
-            }
+                if (data.status === 'success') renderConfigSources(data.providers);
+            } catch (e) { console.error(e); }
         }
 
         function closeConfigModal() {
@@ -1948,35 +1254,35 @@ const term = document.getElementById('terminal-content');
             setTimeout(() => modal.classList.add('hidden'), 300);
         }
 
-        window.configSources = window.configSources || [];
+        let configSources = [];
         function renderConfigSources(providers) {
-            window.configSources = providers;
+            configSources = providers;
             const container = document.getElementById('config-sources-container');
             container.innerHTML = '';
-            if (providers.length === 0) { container.innerHTML = '<div class="text-center text-emerald-500/50 py-4 text-xs font-mono">No tactical resources defined.</div>'; return; }
+            if (providers.length === 0) { container.innerHTML = '<div class="text-center text-slate-500 py-4 text-xs">No resources defined.</div>'; return; }
             providers.forEach((p, index) => {
                 const item = document.createElement('div');
-                item.className = 'flex items-center gap-3 p-3 bg-background/50 rounded-md border border-emerald-500/20 group';
+                item.className = 'flex items-center gap-3 p-3 bg-slate-950 rounded-xl border border-white/5 group';
                 item.innerHTML = `
-                    <select onchange="updateConfigSource(${index}, 'type', parseInt(this.value))" class="bg-background border border-emerald-500/30 text-emerald-400 font-mono text-[10px] rounded px-2 py-1.5 focus:border-primary outline-none w-24 shrink-0">
+                    <select onchange="updateConfigSource(${index}, 'type', parseInt(this.value))" class="bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded-lg px-2 py-1.5 focus:border-primary outline-none w-24 shrink-0">
                         <option value="0" ${p.type === 0 ? 'selected' : ''}>ALL</option>
                         <option value="1" ${p.type === 1 ? 'selected' : ''}>HTTP</option>
                         <option value="4" ${p.type === 4 ? 'selected' : ''}>SOCKS4</option>
                         <option value="5" ${p.type === 5 ? 'selected' : ''}>SOCKS5</option>
                     </select>
-                    <input type="text" value="${p.url}" onchange="updateConfigSource(${index}, 'url', this.value)" class="flex-1 bg-transparent border-b border-emerald-500/30 text-slate-300 font-mono text-[10px] px-2 py-1 focus:border-primary outline-none" />
-                    <button onclick="removeConfigSource(${index})" class="text-emerald-500/50 hover:text-danger opacity-0 group-hover:opacity-100 transition-all"><span class="material-symbols-rounded">delete</span></button>
+                    <input type="text" value="${p.url}" onchange="updateConfigSource(${index}, 'url', this.value)" class="flex-1 bg-transparent border-b border-slate-800 text-slate-300 text-xs px-2 py-1 focus:border-primary outline-none" />
+                    <button onclick="removeConfigSource(${index})" class="text-slate-600 hover:text-danger opacity-0 group-hover:opacity-100 transition-all"><span class="material-symbols-rounded">delete</span></button>
                 `;
                 container.appendChild(item);
             });
         }
 
-        function updateConfigSource(index, field, value) { window.configSources[index][field] = value; }
-        function removeConfigSource(index) { window.configSources.splice(index, 1); renderConfigSources(window.configSources); }
-        function addConfigSource() { window.configSources.push({ type: 5, url: '', timeout: 10 }); renderConfigSources(window.configSources); }
+        function updateConfigSource(index, field, value) { configSources[index][field] = value; }
+        function removeConfigSource(index) { configSources.splice(index, 1); renderConfigSources(configSources); }
+        function addConfigSource() { configSources.push({ type: 5, url: '', timeout: 10 }); renderConfigSources(configSources); }
         async function saveProxyConfig() {
             try {
-                const res = await fetch('/api/config/proxies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ providers: window.configSources }) });
+                const res = await fetch('/api/config/proxies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ providers: configSources }) });
                 const data = await res.json();
                 if(data.status === 'success') closeConfigModal();
             } catch (e) { console.error(e); }
@@ -2081,6 +1387,10 @@ const term = document.getElementById('terminal-content');
             }
             resultArea.innerHTML = html;
         }
+
+        // --- History & Analytics Logic ---
+        let historyPage = 1;
+        let activeHistoryChart = null;
 
         function switchMainView(view) {
             const views = ['dashboard', 'history'];
@@ -2251,22 +1561,17 @@ const term = document.getElementById('terminal-content');
             updateVisibility(); 
             toggleRefreshDropdown(); 
             toggleHarvest(); 
-            toggleBehavioralSettings();
+            setupWebSocket(); 
             setLogFilter('ALL'); 
+            checkC2Status(); 
+            refreshC2Nodes();
+            refreshTasks();
+            setInterval(refreshC2Nodes, 5000); // Poll C2 nodes every 5s
+            setInterval(refreshTasks, 5000);   // Poll active tasks every 5s
+            initMap();
             document.getElementById('log-level-selector').value = currentLogLevel; 
             refreshLogVisibility();
-            if (IS_REPLAY_MODE) {
-                startReplayMode();
-            } else {
-                setupWebSocket(); 
-                checkC2Status(); 
-                refreshC2Nodes();
-                refreshTasks();
-                setInterval(refreshC2Nodes, 5000); // Poll C2 nodes every 5s
-                setInterval(refreshTasks, 5000);   // Poll active tasks every 5s
-                initMap();
-                fetch('/api/health').then(r => r.json()).then(d => { if (d.engine_active) setAppState(STATE.RUNNING); });
-            }
+            fetch('/api/health').then(r => r.json()).then(d => { if (d.engine_active) setAppState(STATE.RUNNING); });
 
             // Setup Drag & Drop for Proxy List
             const proxyInput = document.getElementById('proxy_list');
@@ -2375,7 +1680,6 @@ const term = document.getElementById('terminal-content');
                 smart_rpc: document.getElementById('smart_rpc').checked,
                 autoscale: document.getElementById('auto_scale').checked,
                 evasion: document.getElementById('advanced_evasion').checked,
-                behavioral_intensity: parseInt(document.getElementById('behavioral_intensity').value),
                 distribute_to_workers: document.getElementById('distribute_to_workers').checked
             };
             await fetch('/api/presets', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, params}) });
@@ -2400,8 +1704,6 @@ const term = document.getElementById('terminal-content');
             document.getElementById('smart_rpc').checked = p.smart_rpc;
             document.getElementById('auto_scale').checked = p.autoscale;
             document.getElementById('advanced_evasion').checked = p.evasion;
-            document.getElementById('behavioral_intensity').value = p.behavioral_intensity || 15;
-            document.getElementById('intensity-val').textContent = (p.behavioral_intensity || 15) + '%';
             document.getElementById('distribute_to_workers').checked = p.distribute_to_workers;
             updateVisibility();
             toggleHarvest();
@@ -2460,7 +1762,6 @@ const term = document.getElementById('terminal-content');
                 smart_rpc: document.getElementById('smart_rpc').checked,
                 autoscale: document.getElementById('auto_scale').checked,
                 evasion: document.getElementById('advanced_evasion').checked,
-                behavioral_intensity: parseInt(document.getElementById('behavioral_intensity').value),
                 distribute_to_workers: document.getElementById('distribute_to_workers').checked
             };
             await fetch('/api/schedule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: 'task', datetime_iso: iso, params}) });
@@ -2468,145 +1769,50 @@ const term = document.getElementById('terminal-content');
             showToast("Task scheduled", "success");
         }
 
-        function updateEngineRankings(scores) {
-            const list = document.getElementById('engine-sequence-list');
-            if (!list || !scores) return;
-            
-            // Sort engines by score desc
-            const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-            
-            list.innerHTML = sorted.map(([name, score], index) => `
-                <div class="flex items-center justify-between p-2 bg-slate-950/50 rounded-lg border ${score > 10 ? 'border-primary/30' : 'border-white/5'} text-[9px] font-mono transition-all">
-                    <span class="text-slate-400">${index + 1}. ${name}</span>
-                    <div class="flex items-center gap-2">
-                        <span class="${score > 10 ? 'text-primary' : score < 5 ? 'text-danger' : 'text-warning'} font-bold">${score}pts</span>
-                        <span class="material-symbols-rounded text-[10px] ${score > 0 ? 'text-primary' : 'text-slate-600'}">${score > 10 ? 'verified' : 'check_circle'}</span>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-// --- Pro-Max Tooltip System Logic ---
+// --- Tooltip System Logic ---
         const tooltipEl = document.createElement('div');
         tooltipEl.id = 'custom-tooltip';
         document.body.appendChild(tooltipEl);
 
-        let tooltipTimer = null;
-        let activeTooltipTarget = null;
         let rafId = null;
-
-        function hideTooltip() {
-            tooltipEl.classList.remove('active');
-            activeTooltipTarget = null;
-            if (tooltipTimer) clearTimeout(tooltipTimer);
-        }
-
-        function showTooltip(target, text, x, y) {
-            if (activeTooltipTarget === target) return;
-            
-            if (tooltipTimer) clearTimeout(tooltipTimer);
-            
-            tooltipTimer = setTimeout(() => {
-                tooltipEl.innerHTML = `<span class="tt-header">Information</span><span>${text}</span>`;
-                tooltipEl.classList.add('active');
-                activeTooltipTarget = target;
-                updateTooltipPos(x, y);
-            }, 120); // 120ms show delay for intentional feel
-        }
-
-        function updateTooltipPos(pageX, pageY) {
-            if (rafId) cancelAnimationFrame(rafId);
-            rafId = requestAnimationFrame(() => {
-                const tRect = tooltipEl.getBoundingClientRect();
-                let x = pageX + 15;
-                let y = pageY + 15;
-                
-                // Edge detection
-                if (x + tRect.width > window.innerWidth - 10) x = pageX - tRect.width - 15;
-                if (y + tRect.height > window.innerHeight - 10) y = pageY - tRect.height - 15;
-                
-                tooltipEl.style.left = x + 'px';
-                tooltipEl.style.top = y + 'px';
-            });
-        }
 
         document.addEventListener('mouseover', (e) => {
             const target = e.target.closest('[data-tooltip]');
             if (target) {
                 const text = target.getAttribute('data-tooltip');
-                if (text) showTooltip(target, text, e.pageX, e.pageY);
+                if(!text) return;
+                
+                tooltipEl.innerHTML = `<span class="tt-header">SYS_INFO</span><span>${text}</span>`;
+                tooltipEl.classList.add('active');
+                
+                // Position initial
+                let x = e.pageX + 15;
+                let y = e.pageY + 15;
+                tooltipEl.style.left = x + 'px';
+                tooltipEl.style.top = y + 'px';
             }
         });
 
         document.addEventListener('mousemove', (e) => {
-            if (activeTooltipTarget) {
-                updateTooltipPos(e.pageX, e.pageY);
+            if (tooltipEl.classList.contains('active')) {
+                if (rafId) cancelAnimationFrame(rafId);
+                rafId = requestAnimationFrame(() => {
+                    const tRect = tooltipEl.getBoundingClientRect();
+                    let x = e.pageX + 15;
+                    let y = e.pageY + 15;
+                    
+                    if (x + tRect.width > window.innerWidth) x = e.pageX - tRect.width - 10;
+                    if (y + tRect.height > window.innerHeight + window.scrollY) y = e.pageY - tRect.height - 10;
+                    
+                    tooltipEl.style.left = x + 'px';
+                    tooltipEl.style.top = y + 'px';
+                });
             }
         });
 
         document.addEventListener('mouseout', (e) => {
             const target = e.target.closest('[data-tooltip]');
             if (target) {
-                // Check if we are moving TO a child of the same target (prevents flickering)
-                if (e.relatedTarget && target.contains(e.relatedTarget)) return;
-                hideTooltip();
+                tooltipEl.classList.remove('active');
             }
         });
-
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden' && perfWorker) {
-                const dataToSave = historyBuffer.toArray();
-                perfWorker.postMessage({ type: 'serialize', data: dataToSave });
-            }
-        });
-
-        window.addEventListener('beforeunload', () => {
-            if (perfWorker) {
-                const dataToSave = historyBuffer.toArray();
-                perfWorker.postMessage({ type: 'serialize', data: dataToSave });
-            }
-        });
-
-        // --- Global Control Exports ---
-        window.analyzeTarget = analyzeTarget;
-        window.startAttack = startAttack;
-        window.stopAttack = stopAttack;
-        window.stopAllAttacks = stopAllAttacks;
-        window.handleMainAction = handleMainAction;
-        window.setTimeframe = setTimeframe;
-        window.switchMainView = switchMainView;
-        window.refreshHistory = refreshHistory;
-        window.openHistoryDetail = openHistoryDetail;
-        window.closeHistoryDetail = closeHistoryDetail;
-        window.exportHistory = exportHistory;
-        window.changeHistoryPage = changeHistoryPage;
-        window.openSettingsModal = openSettingsModal;
-        window.closeSettingsModal = closeSettingsModal;
-        window.saveSettings = saveSettings;
-        window.openPresetsModal = openPresetsModal;
-        window.closePresetsModal = closePresetsModal;
-        window.savePreset = savePreset;
-        window.deletePreset = deletePreset;
-        window.applyPreset = applyPreset;
-        window.openScheduleModal = openScheduleModal;
-        window.closeScheduleModal = closeScheduleModal;
-        window.saveSchedule = saveSchedule;
-        window.scanSubdomains = scanSubdomains;
-        window.quickAttack = quickAttack;
-        window.openToolsModal = openToolsModal;
-        window.closeToolsModal = closeToolsModal;
-        window.switchToolTab = switchToolTab;
-        window.executeTool = executeTool;
-        window.openConfigModal = openConfigModal;
-        window.closeConfigModal = closeConfigModal;
-        window.saveProxyConfig = saveProxyConfig;
-        window.addConfigSource = addConfigSource;
-        window.removeConfigSource = removeConfigSource;
-        window.toggleHarvest = toggleHarvest;
-        window.toggleRefreshDropdown = toggleRefreshDropdown;
-        window.toggleBehavioralSettings = toggleBehavioralSettings;
-        window.clearTerminal = clearTerminal;
-        window.copyLogs = copyLogs;
-        window.setLogLevel = setLogLevel;
-        window.setLogFilter = setLogFilter;
-        window.setTaskFilter = setTaskFilter;
