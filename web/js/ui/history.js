@@ -4,11 +4,11 @@ import { formatBytes } from '../utils/helpers.js';
 let historyPage = 1;
 
 export function switchMainView(view) {
-    const views = ['dashboard', 'history'];
+    const views = ['dashboard', 'history', 'config'];
     views.forEach(v => {
         const el = document.getElementById(`view-${v}`);
         if (el) el.classList.add('hidden');
-        
+
         const tab = document.getElementById(`tab-nav-${v}`);
         if (tab) {
             tab.classList.remove('bg-primary/10', 'text-primary', 'border-primary');
@@ -18,7 +18,7 @@ export function switchMainView(view) {
 
     const activeView = document.getElementById(`view-${view}`);
     if (activeView) activeView.classList.remove('hidden');
-    
+
     const activeTab = document.getElementById(`tab-nav-${view}`);
     if (activeTab) {
         activeTab.classList.add('bg-primary/10', 'text-primary', 'border-primary');
@@ -27,6 +27,9 @@ export function switchMainView(view) {
 
     if (view === 'history') {
         refreshHistory();
+    } else if (view === 'config') {
+        if (window.refreshPresets) window.refreshPresets();
+        if (window.refreshSchedule) window.refreshSchedule();
     }
 }
 

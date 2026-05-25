@@ -67,7 +67,7 @@
                 <span class="material-symbols-outlined">dashboard</span>
                 <span class="text-sm">Dashboard</span>
             </button>
-            <button onclick="scrollToConfig()" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">
+            <button id="tab-nav-config" onclick="switchMainView('config')" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">
                 <span class="material-symbols-outlined">settings_suggest</span>
                 <span class="text-sm">Attack Config</span>
             </button>
@@ -439,5 +439,16 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script type="module" src="js/main.js"></script>
+    <script type="module">
+        import * as automations from './js/ui/automations.js';
+        window.saveCurrentAsPreset = automations.saveCurrentAsPreset;
+        window.deletePreset = automations.deletePreset;
+        window.loadPreset = automations.loadPreset;
+        window.refreshPresets = automations.refreshPresets;
+        
+        window.scheduleCurrentAttack = automations.scheduleCurrentAttack;
+        window.deleteSchedule = automations.deleteSchedule;
+        window.refreshSchedule = automations.refreshSchedule;
+    </script>
 </body>
 </html>
