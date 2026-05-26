@@ -1773,6 +1773,90 @@ class BrowserEngine:
         return None, None
 
     @staticmethod
+    def _solve_tier3_heavy_stealth(url: str, proxy: str = None, user_agent: str = None, timeout: int = 30):
+        # 3a. Patchright (Stealth Playwright)
+        if PATCHRIGHT_INSTALLED:
+            try:
+                from patchright.sync_api import sync_playwright
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(headless=True)
+                    context = browser.new_context(user_agent=user_agent)
+                    page = context.new_page()
+                    try:
+                        page.goto(url, timeout=timeout * 1000)
+                        from time import sleep
+                        for _ in range(10):
+                            sleep(1.5)
+                            cookies = context.cookies()
+                            cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+                            if "cf_clearance" in cookie_str:
+                                return cookie_str, user_agent
+                    finally:
+                        browser.close()
+            except Exception:
+                pass
+
+        # 3b. Undetected Chromedriver
+        if UNDETECTED_CHROMEDRIVER_INSTALLED:
+            try:
+                import undetected_chromedriver as uc
+                options = uc.ChromeOptions()
+                options.add_argument('--headless')
+                if proxy:
+                    options.add_argument(f'--proxy-server={proxy}')
+                driver = uc.Chrome(options=options)
+                try:
+                    driver.get(url)
+                    from time import sleep
+                    for _ in range(10):
+                        sleep(1.5)
+                        cookies = driver.get_cookies()
+                        cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+                        if "cf_clearance" in cookie_str:
+                            ua = driver.execute_script("return navigator.userAgent")
+                            return cookie_str, ua
+                finally:
+                    driver.quit()
+            except Exception:
+                pass
+
+        return None, None
+
+    @staticmethod
+    def _solve_tier4_ultimate_stealth(url: str, proxy: str = None, user_agent: str = None, timeout: int = 45):
+        # 4a. Camoufox (Ultimate Stealth Firefox)
+        if CAMOUFOX_INSTALLED:
+            try:
+                from camoufox.sync_api import Camoufox
+                camoufox_kwargs = {
+                    "headless": True,
+                    "humanize": True,
+                    "fingerprint_preset": True,
+                }
+                if proxy:
+                    p_url = f"http://{proxy}" if "://" not in proxy else proxy
+                    camoufox_kwargs["proxy"] = {"server": p_url}
+                
+                with Camoufox(**camoufox_kwargs) as browser:
+                    page = browser.new_page()
+                    try:
+                        page.goto(url, wait_until="domcontentloaded", timeout=timeout * 1000)
+                        from time import sleep
+                        for _ in range(15):
+                            sleep(2.0)
+                            cookies = browser.contexts[0].cookies()
+                            cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+                            if "cf_clearance" in cookie_str:
+                                ua = page.evaluate("navigator.userAgent")
+                                return cookie_str, ua
+                    finally:
+                        pass # Camoufox context manager handles it
+            except Exception:
+                pass
+
+        return None, None
+
+    @staticmethod
     def solve_cf(url: str, proxy: str = None, user_agent: str = None, timeout: int = 45000):
         # 1. Check cache
         cache_file = get_data_path() / "assets" / "token_cache.json"
@@ -1879,7 +1963,22 @@ class BrowserEngine:
             HttpFlood._active_solver = "Tier 2"
             return cookie, ua
             
-        # (Tier 3 and Tier 4 placeholders)
+        # Tier 3: Heavy Stealth Chromium
+        logger.info(f"{bcolors.WARNING}[!] Tier 2 failed. Executing Tier 3 (Heavy Stealth)...{bcolors.RESET}")
+        cookie, ua = BrowserEngine._solve_tier3_heavy_stealth(url, proxy, user_agent, 30)
+        if cookie:
+            logger.info(f"{bcolors.OKGREEN}[*] Solved at Tier 3!{bcolors.RESET}")
+            HttpFlood._active_solver = "Tier 3"
+            return cookie, ua
+
+        # Tier 4: Ultimate Stealth Firefox
+        logger.info(f"{bcolors.WARNING}[!] Tier 3 failed. Executing Tier 4 (Ultimate Stealth)...{bcolors.RESET}")
+        cookie, ua = BrowserEngine._solve_tier4_ultimate_stealth(url, proxy, user_agent, 45)
+        if cookie:
+            logger.info(f"{bcolors.OKGREEN}[*] Solved at Tier 4!{bcolors.RESET}")
+            HttpFlood._active_solver = "Tier 4"
+            return cookie, ua
+
         logger.error(f"{bcolors.FAIL}[!] All configured bypass tiers failed.{bcolors.RESET}")
         return None, None
         
