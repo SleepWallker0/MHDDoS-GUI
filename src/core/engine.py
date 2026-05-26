@@ -1883,23 +1883,32 @@ class BrowserEngine:
                     "headless": True,
                     "humanize": True,
                     "fingerprint_preset": True,
+                    "os": "windows" # Better clustering avoidance
                 }
                 if proxy:
                     p_url = f"http://{proxy}" if "://" not in proxy else proxy
                     camoufox_kwargs["proxy"] = {"server": p_url}
-                
+
                 with Camoufox(**camoufox_kwargs) as browser:
                     page = browser.new_page()
                     try:
                         page.goto(url, wait_until="domcontentloaded", timeout=timeout * 1000)
                         from time import sleep
-                        for _ in range(15):
+                        import random
+                        for i in range(20):
                             sleep(2.0)
                             cookies = browser.contexts[0].cookies()
                             cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
                             if "cf_clearance" in cookie_str:
                                 ua = page.evaluate("navigator.userAgent")
                                 return cookie_str, ua
+
+                            # Adaptive Interaction
+                            if i % 3 == 0:
+                                try:
+                                    page.mouse.move(random.randint(100, 500), random.randint(100, 500))
+                                    page.mouse.wheel(0, random.randint(100, 300))
+                                except: pass
                     finally:
                         pass # Camoufox context manager handles it
             except Exception:
