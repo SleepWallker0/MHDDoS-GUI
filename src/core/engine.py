@@ -1698,6 +1698,81 @@ class BrowserEngine:
         return None, None
 
     @staticmethod
+    def _solve_tier2_fast_cdp(url: str, proxy: str = None, user_agent: str = None, timeout: int = 15):
+        # 2a. Botasaurus
+        if BOTASAURUS_INSTALLED:
+            try:
+                from botasaurus.browser import browser, Driver
+                def get_proxy(data): return data.get("proxy")
+                
+                @browser(proxy=get_proxy, block_images_and_css=True, headless=True, close_on_crash=True)
+                def bot_solve(driver: Driver, data):
+                    driver.google_get(data["url"], bypass_cloudflare=True)
+                    cookies = driver.get_cookies_dict()
+                    cookie_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+                    ua = driver.run_js("return navigator.userAgent")
+                    if "cf_clearance" in cookie_str:
+                        return cookie_str, ua
+                    return None, None
+                
+                res = bot_solve([{"url": url, "proxy": proxy}])
+                if res and res[0] and res[0][0]:
+                    return res[0][0], res[0][1]
+            except Exception:
+                pass
+                
+        # 2b. Nodriver
+        if NODRIVER_INSTALLED:
+            try:
+                import nodriver as uc
+                import asyncio
+                async def _nd_solve():
+                    browser = await uc.start()
+                    try:
+                        page = await browser.get(url)
+                        await asyncio.sleep(3)
+                        cookies = await page.get_cookies()
+                        cookie_str = "; ".join([f"{c.name}={c.value}" for c in cookies])
+                        ua = await page.evaluate("navigator.userAgent")
+                        if "cf_clearance" in cookie_str:
+                            return cookie_str, ua
+                    finally:
+                        browser.stop()
+                    return None, None
+                cookie, ua = asyncio.run(_nd_solve())
+                if cookie: return cookie, ua
+            except Exception:
+                pass
+
+        # 2c. DrissionPage
+        if DRISSION_INSTALLED:
+            try:
+                from DrissionPage import ChromiumPage, ChromiumOptions
+                co = ChromiumOptions()
+                co.auto_port()
+                co.set_argument('--headless=new')
+                if proxy:
+                    p_url = f"http://{proxy}" if "://" not in proxy else proxy
+                    co.set_argument(f'--proxy-server={p_url}')
+                page = ChromiumPage(co)
+                try:
+                    page.get(url, timeout=timeout)
+                    from time import sleep
+                    for _ in range(5):
+                        sleep(1)
+                        cookies = page.cookies()
+                        cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+                        if "cf_clearance" in cookie_str:
+                            ua = page.run_js("return navigator.userAgent")
+                            return cookie_str, ua
+                finally:
+                    page.quit()
+            except Exception:
+                pass
+
+        return None, None
+
+    @staticmethod
     def solve_cf(url: str, proxy: str = None, user_agent: str = None, timeout: int = 45000):
         # 1. Check cache
         cache_file = get_data_path() / "assets" / "token_cache.json"
