@@ -30,6 +30,7 @@ dependencies = [
     "curl-cffi>=0.14.0",
     "httpx[http2]>=0.28.1",
     "h3>=4.4.2",
+    "camoufox[geoip]>=0.4.0",
     "undetected-chromedriver>=3.5.5",
     "botasaurus>=4.0.0",
     "patchright>=1.49.0",
