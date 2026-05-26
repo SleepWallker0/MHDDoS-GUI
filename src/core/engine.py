@@ -128,6 +128,18 @@ try:
 except ImportError:
     CLOAKBROWSER_INSTALLED = False
 
+try:
+    from botasaurus.browser import browser, Driver
+    BOTASAURUS_INSTALLED = True
+except ImportError:
+    BOTASAURUS_INSTALLED = False
+
+try:
+    import undetected_chromedriver as uc_chrome
+    UNDETECTED_CHROMEDRIVER_INSTALLED = True
+except ImportError:
+    UNDETECTED_CHROMEDRIVER_INSTALLED = False
+
 # --- Windows asyncio Proactor OSError 10057 Workaround ---
 if sys.platform.lower().startswith("win") and sys.version_info >= (3, 8):
     try:
@@ -1822,37 +1834,54 @@ class BrowserEngine:
                         page = await browser.get(url)
 
                         # Challenge Detection & Polling Loop
-                        for pulse in range(15):
+                        for pulse in range(20):
+                            try:
+                                # 1. Polling for cookies (Sequential with delay)
+                                # We use a longer sleep to avoid websocket congestion
+                                await asyncio.sleep(2.5)
+                                
+                                cookies = await page.get_cookies()
+                                cookie_str = "; ".join([f"{c.name}={c.value}" for c in cookies])
+                                if "cf_clearance" in cookie_str:
+                                    break
+                                
+                                # 2. Find and click iframe
+                                try:
+                                    iframes = await page.select_all("iframe")
+                                    for iframe in iframes:
+                                        src = getattr(iframe, "src", "").lower()
+                                        if "cloudflare" in src or "turnstile" in src:
+                                            logger.debug(f"[*] Headless Recon: Interaction pulse {pulse+1} (Nodriver).")
+                                            await iframe.mouse_click()
+                                            break
+                                except Exception:
+                                    pass
+
+                            except AssertionError as ae:
+                                # Library-level concurrency crash (websockets 14+)
+                                # ABORT immediately to prevent infinite loop of tracebacks
+                                logger.error(f"{bcolors.FAIL}[!] Nodriver Library Error: Concurrency violation (websockets). Aborting.{bcolors.RESET}")
+                                return None, None
+                            except Exception as inner_e:
+                                logger.debug(f"[*] Nodriver Loop Warning: {inner_e}")
+                                await asyncio.sleep(1.0)
+
+                        # Final extraction
+                        try:
                             cookies = await page.get_cookies()
                             cookie_str = "; ".join([f"{c.name}={c.value}" for c in cookies])
+                            ua = await page.evaluate("navigator.userAgent")
                             if "cf_clearance" in cookie_str:
-                                break
-
-                            try:
-                                # Find iframes and look for turnstile/cloudflare
-                                iframes = await page.select_all("iframe")
-                                for iframe in iframes:
-                                    src = getattr(iframe, "src", "").lower()
-                                    if "cloudflare" in src or "turnstile" in src:
-                                        # Click the center of the iframe bounding box
-                                        logger.debug(f"[*] Headless Recon: Clicking Turnstile iframe (Nodriver).")
-                                        await iframe.mouse_click()
-                                        break
-                            except Exception:
-                                pass
-
-                            await asyncio.sleep(1.5)
-
-                        # Wait for final cf_clearance extraction
-                        cookies = await page.get_cookies()
-                        cookie_str = "; ".join([f"{c.name}={c.value}" for c in cookies])
-                        ua = await page.evaluate("navigator.userAgent")
-
-                        if "cf_clearance" in cookie_str:
-                            return cookie_str, ua
+                                return cookie_str, ua
+                        except:
+                            pass
+                            
                         return None, None
                     finally:
-                        browser.stop()
+                        try:
+                            browser.stop()
+                        except:
+                            pass
 
                 cookie_str, ua = asyncio.run(_solve_nodriver())
                 t1c_elapsed = round(time() - t1c_start, 2)
