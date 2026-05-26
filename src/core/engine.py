@@ -1856,16 +1856,32 @@ class BrowserEngine:
 
     @staticmethod
     def _solve_cf_internal(url: str, proxy: str = None, user_agent: str = None, timeout: int = 45000):
-        _solve_start = time()
         if not url.startswith("https://") and not url.startswith("http://"):
             url = "https://" + url
         elif url.startswith("http://"):
             url = url.replace("http://", "https://")
         
-        domain = url.split("//")[-1].split("/")[0]
-        logger.info(f"{bcolors.OKCYAN}[*] Headless Recon: Initializing stealth browser for {url}...{bcolors.RESET}")
-        logger.info(f"[*] Solver Config: proxy={'Yes: '+proxy[:30] if proxy else 'None'}, UA={'custom' if user_agent else 'auto'}, timeout={timeout}ms")
-        logger.info(f"[*] Solver Availability: Cloudscraper=Y, curl_cffi={'Y' if CURL_CFFI_INSTALLED else 'N'}, Nodriver={'Y' if NODRIVER_INSTALLED else 'N'}, Camoufox={'Y' if CAMOUFOX_INSTALLED else 'N'}, Patchright={'Y' if PATCHRIGHT_INSTALLED else 'N'}, Playwright={'Y' if PLAYWRIGHT_INSTALLED else 'N'}, CloakBrowser={'Y' if CLOAKBROWSER_INSTALLED else 'N'}, DrissionPage={'Y' if DRISSION_INSTALLED else 'N'}")
+        logger.info(f"{bcolors.OKCYAN}[*] Headless Recon: Starting Waterfall Bypass System for {url}...{bcolors.RESET}")
+        
+        # Tier 1: Lightweight HTTP
+        logger.info(f"{bcolors.OKCYAN}[*] Executing Tier 1 (Lightweight)...{bcolors.RESET}")
+        cookie, ua = BrowserEngine._solve_tier1_lightweight(url, proxy, user_agent, 10)
+        if cookie:
+            logger.info(f"{bcolors.OKGREEN}[*] Solved at Tier 1!{bcolors.RESET}")
+            HttpFlood._active_solver = "Tier 1"
+            return cookie, ua
+
+        # Tier 2: Fast Headless CDP
+        logger.info(f"{bcolors.WARNING}[!] Tier 1 failed. Executing Tier 2 (Fast CDP)...{bcolors.RESET}")
+        cookie, ua = BrowserEngine._solve_tier2_fast_cdp(url, proxy, user_agent, 15)
+        if cookie:
+            logger.info(f"{bcolors.OKGREEN}[*] Solved at Tier 2!{bcolors.RESET}")
+            HttpFlood._active_solver = "Tier 2"
+            return cookie, ua
+            
+        # (Tier 3 and Tier 4 placeholders)
+        logger.error(f"{bcolors.FAIL}[!] All configured bypass tiers failed.{bcolors.RESET}")
+        return None, None
         
         # === TIER 1: Lightweight HTTP Solvers (10s max) ===
         # These can solve simple JS challenges without launching a full browser
