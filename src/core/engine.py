@@ -1774,7 +1774,45 @@ class BrowserEngine:
 
     @staticmethod
     def _solve_tier3_heavy_stealth(url: str, proxy: str = None, user_agent: str = None, timeout: int = 30):
-        # 3a. Patchright (Stealth Playwright)
+        # 3a. CloakBrowser (Source-level patches + Humanize)
+        if CLOAKBROWSER_INSTALLED:
+            try:
+                import random
+                p_url = f"http://{proxy}" if proxy and "://" not in proxy else proxy
+                
+                # Use humanize and geoip for maximum stealth
+                browser = cloakbrowser_launch(
+                    headless=True, 
+                    humanize=True, 
+                    geoip=True if proxy else False,
+                    proxy=p_url
+                )
+                try:
+                    context = browser.new_context(user_agent=user_agent) if user_agent else browser.new_context()
+                    page = context.new_page()
+                    page.goto(url, timeout=timeout * 1000)
+                    
+                    from time import sleep
+                    for i in range(15):
+                        sleep(2)
+                        cookies = context.cookies()
+                        cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+                        if "cf_clearance" in cookie_str:
+                            ua = page.evaluate("navigator.userAgent")
+                            return cookie_str, ua
+                        
+                        # Adaptive Interaction: Move mouse slightly to trigger human behavior
+                        if i % 3 == 0:
+                            try:
+                                page.mouse.move(random.randint(100, 500), random.randint(100, 500))
+                                page.mouse.wheel(0, random.randint(100, 300))
+                            except: pass
+                finally:
+                    browser.close()
+            except Exception:
+                pass
+
+        # 3b. Patchright (Stealth Playwright)
         if PATCHRIGHT_INSTALLED:
             try:
                 from patchright.sync_api import sync_playwright
@@ -1785,36 +1823,49 @@ class BrowserEngine:
                     try:
                         page.goto(url, timeout=timeout * 1000)
                         from time import sleep
-                        for _ in range(10):
-                            sleep(1.5)
+                        import random
+                        for i in range(15):
+                            sleep(2)
                             cookies = context.cookies()
                             cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
                             if "cf_clearance" in cookie_str:
                                 return cookie_str, user_agent
+                                
+                            if i % 3 == 0:
+                                try:
+                                    page.mouse.move(random.randint(100, 500), random.randint(100, 500))
+                                except: pass
                     finally:
                         browser.close()
             except Exception:
                 pass
 
-        # 3b. Undetected Chromedriver
+        # 3c. Undetected Chromedriver
         if UNDETECTED_CHROMEDRIVER_INSTALLED:
             try:
                 import undetected_chromedriver as uc
                 options = uc.ChromeOptions()
                 options.add_argument('--headless')
                 if proxy:
-                    options.add_argument(f'--proxy-server={proxy}')
+                    p_url = f"http://{proxy}" if "://" not in proxy else proxy
+                    options.add_argument(f'--proxy-server={p_url}')
                 driver = uc.Chrome(options=options)
                 try:
                     driver.get(url)
                     from time import sleep
-                    for _ in range(10):
-                        sleep(1.5)
+                    import random
+                    for i in range(15):
+                        sleep(2)
                         cookies = driver.get_cookies()
                         cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
                         if "cf_clearance" in cookie_str:
                             ua = driver.execute_script("return navigator.userAgent")
                             return cookie_str, ua
+                    
+                        if i % 3 == 0:
+                            try:
+                                driver.execute_script(f"window.scrollBy(0, {random.randint(100, 300)});")
+                            except: pass
                 finally:
                     driver.quit()
             except Exception:
