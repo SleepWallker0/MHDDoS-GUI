@@ -1661,6 +1661,43 @@ class BrowserEngine:
         except: pass
 
     @staticmethod
+    def _solve_tier1_lightweight(url: str, proxy: str = None, user_agent: str = None, timeout: int = 10):
+        # 1a. Cloudscraper
+        try:
+            from cloudscraper import create_scraper
+            scraper = create_scraper()
+            if proxy:
+                p_url = f"http://{proxy}" if "://" not in proxy else proxy
+                scraper.proxies = {"http": p_url, "https": p_url}
+            resp = scraper.get(url, timeout=timeout)
+            if resp.status_code < 403:
+                cookie_str = "; ".join([f"{k}={v}" for k, v in resp.cookies.items()])
+                if "cf_clearance" in cookie_str:
+                    ua = resp.request.headers.get("User-Agent", user_agent)
+                    return cookie_str, ua
+        except Exception:
+            pass
+
+        # 1b. curl_cffi
+        if CURL_CFFI_INSTALLED:
+            try:
+                from curl_cffi.requests import Session as CurlSyncSession
+                profile = BrowserEngine.get_curl_profile(user_agent)
+                with CurlSyncSession(impersonate=profile) as cs:
+                    if proxy:
+                        p_url = f"http://{proxy}" if "://" not in proxy else proxy
+                        cs.proxies = {"http": p_url, "https": p_url}
+                    resp = cs.get(url, timeout=timeout, allow_redirects=True)
+                    if resp.status_code < 403:
+                        cookie_str = "; ".join([f"{k}={v}" for k, v in resp.cookies.items()])
+                        if "cf_clearance" in cookie_str:
+                            return cookie_str, user_agent
+            except Exception:
+                pass
+        
+        return None, None
+
+    @staticmethod
     def solve_cf(url: str, proxy: str = None, user_agent: str = None, timeout: int = 45000):
         # 1. Check cache
         cache_file = get_data_path() / "assets" / "token_cache.json"
@@ -1837,10 +1874,10 @@ class BrowserEngine:
                         for pulse in range(20):
                             try:
                                 # 1. Polling for cookies (Sequential with delay)
-                                # We use a longer sleep to avoid websocket congestion
                                 await asyncio.sleep(2.5)
                                 
-                                cookies = await page.get_cookies()
+                                # In nodriver 0.50+, cookies are in browser.cookies
+                                cookies = await browser.cookies.get_all()
                                 cookie_str = "; ".join([f"{c.name}={c.value}" for c in cookies])
                                 if "cf_clearance" in cookie_str:
                                     break
