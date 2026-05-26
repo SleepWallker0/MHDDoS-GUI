@@ -1820,17 +1820,34 @@ class BrowserEngine:
                     browser = await uc.start()
                     try:
                         page = await browser.get(url)
-                        # Built-in Cloudflare verification
-                        if hasattr(page, 'cf_verify'):
-                            await page.cf_verify()
-                        else:
-                            await asyncio.sleep(10)
-                        
-                        # Wait for cf_clearance
+
+                        # Challenge Detection & Polling Loop
+                        for pulse in range(15):
+                            cookies = await page.get_cookies()
+                            cookie_str = "; ".join([f"{c.name}={c.value}" for c in cookies])
+                            if "cf_clearance" in cookie_str:
+                                break
+
+                            try:
+                                # Find iframes and look for turnstile/cloudflare
+                                iframes = await page.select_all("iframe")
+                                for iframe in iframes:
+                                    src = getattr(iframe, "src", "").lower()
+                                    if "cloudflare" in src or "turnstile" in src:
+                                        # Click the center of the iframe bounding box
+                                        logger.debug(f"[*] Headless Recon: Clicking Turnstile iframe (Nodriver).")
+                                        await iframe.mouse_click()
+                                        break
+                            except Exception:
+                                pass
+
+                            await asyncio.sleep(1.5)
+
+                        # Wait for final cf_clearance extraction
                         cookies = await page.get_cookies()
                         cookie_str = "; ".join([f"{c.name}={c.value}" for c in cookies])
                         ua = await page.evaluate("navigator.userAgent")
-                        
+
                         if "cf_clearance" in cookie_str:
                             return cookie_str, ua
                         return None, None
