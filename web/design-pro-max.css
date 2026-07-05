@@ -169,6 +169,31 @@ body {
     transform: scale(0.96);
 }
 
+/* Tactical Glow & Pulse Tokens */
+.tactical-glow-primary {
+    box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);
+    transition: box-shadow 0.4s var(--ease-out-expo);
+}
+.tactical-glow-primary:hover {
+    box-shadow: 0 0 40px rgba(16, 185, 129, 0.5);
+}
+
+.tactical-glow-error {
+    box-shadow: 0 0 30px rgba(239, 68, 68, 0.4);
+    animation: tactical-breathing-glow 2.5s infinite ease-in-out;
+}
+
+@keyframes tactical-breathing-glow {
+    0%, 100% {
+        box-shadow: 0 0 25px rgba(239, 68, 68, 0.3);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow: 0 0 45px rgba(239, 68, 68, 0.6);
+        transform: scale(1.01);
+    }
+}
+
 /* Progress Matrices */
 .matrix-progress {
     height: 6px;
