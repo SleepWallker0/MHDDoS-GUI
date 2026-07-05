@@ -23,6 +23,9 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
+from src.core.state_manager import state_manager, AttackStatus, AttackStateSnapshot
+from src.api.ws_manager import ws_manager
+from src.worker.service import worker_service
 
 # --- Logging Configuration ---
 if sys.platform.lower().startswith("win"):
@@ -162,7 +165,7 @@ async def log_broadcaster_daemon():
             state.avg_batch_size = (state.avg_batch_size * 0.9) + (len(batch) * 0.1)
             state.last_flush_ms = (time.time() - start_time) * 1000
 
-            if not state.connected_websockets:
+            if not state.connected_websockets and not ws_manager._clients:
                 continue
                 
             # Coalesce: only keep the *latest* telemetry per task_id. Keep all other logs.
@@ -191,8 +194,9 @@ async def log_broadcaster_daemon():
                     return client
 
             # Broadcast concurrently to all connected clients
+            all_clients = set(state.connected_websockets) | ws_manager._clients
             results = await asyncio.gather(
-                *(send_to_client(client) for client in state.connected_websockets),
+                *(send_to_client(client) for client in all_clients),
                 return_exceptions=True
             )
             
@@ -201,6 +205,7 @@ async def log_broadcaster_daemon():
             for dead in dead_clients:
                 if dead in state.connected_websockets:
                     state.connected_websockets.remove(dead)
+                await ws_manager.disconnect(dead)
                     
         except asyncio.CancelledError:
             break
@@ -571,7 +576,7 @@ async def broadcast_log(message_data: Any, priority: str = "low") -> None:
         state.dropped_low_priority += 1
 
 async def run_attack_subprocess(task_id: str, params: AttackParams) -> None:
-    """Runs the attack process and pipes output to WebSockets with throttling."""
+    """Runs the attack process via WorkerService and pipes output to WebSockets with throttling."""
     command = build_attack_command(params)
     # Append session-id so start.py can track this session in the history DB
     command.extend(["--session-id", task_id])
@@ -583,14 +588,115 @@ async def run_attack_subprocess(task_id: str, params: AttackParams) -> None:
         "msg": f"LAUNCHING TASK {task_id}: {' '.join(command)}"
     }, priority="high")
 
+    last_broadcast = [time.time()]
+    buffer = []
+
+    async def handle_log_line(decoded_line: str):
+        decoded_line = ANSI_ESCAPE.sub('', decoded_line)
+        if not decoded_line:
+            return
+
+        # 1. Handle Structured JSON Telemetry from Engine
+        if decoded_line.startswith('{') and decoded_line.endswith('}'):
+            try:
+                data = json.loads(decoded_line)
+                if "type" in data and data.get("task_id") == task_id:
+                    if data["type"] == "impact" and "bypass" in data:
+                        if "bypass_info" not in state.task_info[task_id]:
+                            state.task_info[task_id]["bypass_info"] = {}
+                        state.task_info[task_id]["bypass_info"] = data["bypass"]
+                    await broadcast_log(data)
+                    return
+            except: pass
+
+        # 2. Handle Textual Tactical Logs & Metrics
+        if "PPS:" in decoded_line and "BPS:" in decoded_line:
+            try:
+                m_pps = re.search(r'PPS:\s*([^,]+)', decoded_line)
+                m_bps = re.search(r'BPS:\s*([^,]+)', decoded_line)
+                m_lat = re.search(r'Latency:\s*([^,]+)', decoded_line)
+                m_pool = re.search(r'Pool:\s*(\d+)/(\d+)(?:\s*\(Warm:\s*(\d+)\))?', decoded_line)
+                
+                if m_pps and m_bps:
+                    await broadcast_log({
+                        "task_id": task_id,
+                        "type": "telemetry",
+                        "level": "DEBUG",
+                        "pps": m_pps.group(1).strip(),
+                        "bps": m_bps.group(1).strip(),
+                        "lat": m_lat.group(1).strip() if m_lat else "0ms",
+                        "pool_active": m_pool.group(1) if m_pool else "0",
+                        "pool_total": m_pool.group(2) if m_pool else "0",
+                        "pool_warm": m_pool.group(3) if m_pool and m_pool.group(3) else "0"
+                    })
+            except Exception as e:
+                logger.debug(f"Telemetry parse error: {e}")
+
+        # 3. Dynamic Impact Metric Extraction (Textual Fallback)
+        if "Impact:" in decoded_line:
+            try:
+                m_ok = re.search(r'OK: (\d+)', decoded_line)
+                m_waf = re.search(r'WAF: (\d+)', decoded_line)
+                m_err = re.search(r'ERR: (\d+)', decoded_line)
+                m_tmo = re.search(r'TMO: (\d+)', decoded_line)
+                m_health = re.search(r'Health:\s*(?:[^A-Z]*)([A-Z]+)', decoded_line)
+
+                if m_ok and m_waf:
+                    health_str = m_health.group(1).lower() if m_health else "stable"
+                    await broadcast_log({
+                        "task_id": task_id,
+                        "type": "impact",
+                        "level": "DEBUG",
+                        "data": {
+                            "s": int(m_ok.group(1)),
+                            "w": int(m_waf.group(1)),
+                            "e": int(m_err.group(1)) if m_err else 0,
+                            "t": int(m_tmo.group(1)) if m_tmo else 0,
+                            "health": health_str
+                        },
+                        "health": health_str
+                    })
+            except: pass
+
+        # 4. Infer Level from message content
+        log_level = "INFO"
+        if any(x in decoded_line.upper() for x in ["ERROR", "FAILED", "CRITICAL", "EXCEPTION"]):
+            log_level = "ERROR"
+        elif any(x in decoded_line.upper() for x in ["WARNING", "WARN"]):
+            log_level = "WARNING"
+        elif any(x in decoded_line.upper() for x in ["SUCCESS", "COMPLETED", "FINISHED"]):
+            log_level = "SUCCESS"
+        elif any(x in decoded_line.upper() for x in ["DEBUG", "TRACE"]):
+            log_level = "DEBUG"
+
+        buffer.append({
+            "task_id": task_id,
+            "type": "log",
+            "level": log_level,
+            "msg": decoded_line
+        })
+
+        now = time.time()
+        if buffer and (now - last_broadcast[0] > 0.05 or len(buffer) > 10):
+            for log_item in buffer:
+                await broadcast_log(log_item)
+            buffer.clear()
+            last_broadcast[0] = now
+            await asyncio.sleep(0.01)
+
     try:
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            cwd=str(BASE_DIR),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT
+        await worker_service.start_attack(
+            target=params.target,
+            duration=params.duration,
+            threads=params.threads,
+            method=params.method,
+            rpc=params.rpc,
+            attack_id=task_id,
+            cmd_args=command,
+            log_callback=handle_log_line
         )
-        state.active_tasks[task_id] = process
+        if worker_service._process:
+            state.active_tasks[task_id] = worker_service._process
         
         await broadcast_log({
             "task_id": task_id, 
@@ -599,115 +705,17 @@ async def run_attack_subprocess(task_id: str, params: AttackParams) -> None:
             "msg": f"PROCESS_SPAWNED: Tactical engine process created for {params.target}"
         }, priority="high")
         
-        if process.stdout:
-            last_broadcast = time.time()
-            buffer = []
+        if worker_service._monitor_task:
+            try:
+                await worker_service._monitor_task
+            except asyncio.CancelledError:
+                pass
             
-            while True:
-                line = await process.stdout.readline()
-                if not line:
-                    break
+        if buffer:
+            for log_item in buffer:
+                await broadcast_log(log_item)
+            buffer.clear()
                 
-                decoded_line = line.decode('utf-8', errors='replace').strip()
-                decoded_line = ANSI_ESCAPE.sub('', decoded_line)
-                if not decoded_line:
-                    continue
-
-                # 1. Handle Structured JSON Telemetry from Engine
-                if decoded_line.startswith('{') and decoded_line.endswith('}'):
-                    try:
-                        data = json.loads(decoded_line)
-                        if "type" in data and data.get("task_id") == task_id:
-                            if data["type"] == "impact" and "bypass" in data:
-                                if "bypass_info" not in state.task_info[task_id]:
-                                    state.task_info[task_id]["bypass_info"] = {}
-                                state.task_info[task_id]["bypass_info"] = data["bypass"]
-                            await broadcast_log(data) # data is already a dict
-                            continue
-                    except: pass
-
-                # 2. Handle Textual Tactical Logs & Metrics
-                if "PPS:" in decoded_line and "BPS:" in decoded_line:
-                    try:
-                        m_pps = re.search(r'PPS:\s*([^,]+)', decoded_line)
-                        m_bps = re.search(r'BPS:\s*([^,]+)', decoded_line)
-                        m_lat = re.search(r'Latency:\s*([^,]+)', decoded_line)
-                        m_pool = re.search(r'Pool:\s*(\d+)/(\d+)(?:\s*\(Warm:\s*(\d+)\))?', decoded_line)
-                        
-                        if m_pps and m_bps:
-                            telemetry = {
-                                "task_id": task_id,
-                                "type": "telemetry",
-                                "level": "DEBUG",
-                                "pps": m_pps.group(1).strip(),
-                                "bps": m_bps.group(1).strip(),
-                                "lat": m_lat.group(1).strip() if m_lat else "0ms",
-                                "pool_active": m_pool.group(1) if m_pool else "0",
-                                "pool_total": m_pool.group(2) if m_pool else "0",
-                                "pool_warm": m_pool.group(3) if m_pool and m_pool.group(3) else "0"
-                            }
-                            await broadcast_log(telemetry)
-                    except Exception as e:
-                        logger.debug(f"Telemetry parse error: {e}")
-
-                # 3. Dynamic Impact Metric Extraction (Textual Fallback)
-                if "Impact:" in decoded_line:
-                    try:
-                        m_ok = re.search(r'OK: (\d+)', decoded_line)
-                        m_waf = re.search(r'WAF: (\d+)', decoded_line)
-                        m_err = re.search(r'ERR: (\d+)', decoded_line)
-                        m_tmo = re.search(r'TMO: (\d+)', decoded_line)
-                        m_health = re.search(r'Health:\s*(?:[^A-Z]*)([A-Z]+)', decoded_line)
-
-                        if m_ok and m_waf:
-                            health_str = m_health.group(1).lower() if m_health else "stable"
-                            impact_data = {
-                                "s": int(m_ok.group(1)),
-                                "w": int(m_waf.group(1)),
-                                "e": int(m_err.group(1)) if m_err else 0,
-                                "t": int(m_tmo.group(1)) if m_tmo else 0,
-                                "health": health_str
-                            }
-                            await broadcast_log({
-                                "task_id": task_id,
-                                "type": "impact",
-                                "level": "DEBUG",
-                                "data": impact_data,
-                                "health": health_str
-                            })
-                    except: pass
-
-                # 4. Infer Level from message content
-                log_level = "INFO"
-                if any(x in decoded_line.upper() for x in ["ERROR", "FAILED", "CRITICAL", "EXCEPTION"]):
-                    log_level = "ERROR"
-                elif any(x in decoded_line.upper() for x in ["WARNING", "WARN"]):
-                    log_level = "WARNING"
-                elif any(x in decoded_line.upper() for x in ["SUCCESS", "COMPLETED", "FINISHED"]):
-                    log_level = "SUCCESS"
-                elif any(x in decoded_line.upper() for x in ["DEBUG", "TRACE"]):
-                    log_level = "DEBUG"
-
-                buffer.append({
-                    "task_id": task_id,
-                    "type": "log",
-                    "level": log_level,
-                    "msg": decoded_line
-                })
-
-                now = time.time()
-                if buffer and (now - last_broadcast > 0.05 or len(buffer) > 10):
-                    for log_item in buffer:
-                        await broadcast_log(log_item)
-                    buffer = []
-                    last_broadcast = now
-                    await asyncio.sleep(0.01)
-            
-            if buffer:
-                for log_item in buffer:
-                    await broadcast_log(log_item)
-                
-        await process.wait()
         await broadcast_log({
             "task_id": task_id, 
             "level": "SYSTEM",
@@ -806,7 +814,7 @@ class ReconManager:
         from urllib.parse import urlparse
         
         parsed = urlparse(target if "://" in target else f"http://{target}")
-        domain = parsed.netloc or parsed.path
+        domain = parsed.hostname or parsed.netloc or parsed.path
         if domain.startswith("www."):
             domain = domain[4:]
             
@@ -853,7 +861,7 @@ class ReconManager:
         from urllib.parse import urlparse
         
         parsed = urlparse(target if "://" in target else f"http://{target}")
-        host = parsed.netloc or parsed.path
+        host = parsed.hostname or parsed.netloc or parsed.path
         if host.startswith("www."):
             host = host[4:]
             
@@ -929,11 +937,36 @@ class ReconManager:
         import dns.resolver
         from urllib.parse import urlparse
         import asyncio
+        import ipaddress
         
         parsed = urlparse(target if "://" in target else f"http://{target}")
-        domain = parsed.netloc or parsed.path
+        domain = parsed.hostname or parsed.netloc or parsed.path
         if domain.startswith("www."):
             domain = domain[4:]
+            
+        if domain.lower() == "localhost":
+            return {
+                "status": "success",
+                "domain": domain,
+                "records": {"A": ["127.0.0.1"], "AAAA": ["::1"], "MX": [], "TXT": [], "NS": []}
+            }
+            
+        try:
+            ip_obj = ipaddress.ip_address(domain)
+            if isinstance(ip_obj, ipaddress.IPv4Address):
+                return {
+                    "status": "success",
+                    "domain": domain,
+                    "records": {"A": [domain], "AAAA": [], "MX": [], "TXT": [], "NS": []}
+                }
+            elif isinstance(ip_obj, ipaddress.IPv6Address):
+                return {
+                    "status": "success",
+                    "domain": domain,
+                    "records": {"A": [], "AAAA": [domain], "MX": [], "TXT": [], "NS": []}
+                }
+        except ValueError:
+            pass
             
         records = {"A": [], "AAAA": [], "MX": [], "TXT": [], "NS": []}
         
@@ -1045,7 +1078,7 @@ async def diagnostics_perf() -> dict[str, Any]:
             "flush_count": state.flush_count,
             "avg_batch_size": round(state.avg_batch_size, 2),
             "last_flush_ms": round(state.last_flush_ms, 2),
-            "connected_clients": len(state.connected_websockets)
+            "connected_clients": len(set(state.connected_websockets) | ws_manager._clients)
         },
         "database": {
             "query_latency_ms": round(db_latency_ms, 2),
@@ -1408,11 +1441,30 @@ async def start_attack(params: AttackParams) -> StatusResponse:
     asyncio.create_task(fire_webhook("Attack Manual Initiation", f"Task ID: {task_id}\nTarget: {params.target}\nMethod: {params.method}"))
     
     # DNS Preflight
-    dns_info = await ReconManager.enumerate_dns(params.target)
-    if dns_info.get("status") == "success":
-        records = dns_info.get("records", {})
-        if not records.get("A") and not records.get("AAAA"):
-            return StatusResponse(status="error", message=f"DNS Preflight Failed: Hostname '{dns_info.get('domain')}' could not be resolved.")
+    from urllib.parse import urlparse
+    import ipaddress
+    
+    parsed_target = urlparse(params.target if "://" in params.target else f"http://{params.target}")
+    host_to_check = parsed_target.hostname or parsed_target.netloc or parsed_target.path
+    if host_to_check.startswith("www."):
+        host_to_check = host_to_check[4:]
+        
+    is_ip_or_localhost = False
+    if host_to_check.lower() == "localhost":
+        is_ip_or_localhost = True
+    else:
+        try:
+            ipaddress.ip_address(host_to_check)
+            is_ip_or_localhost = True
+        except ValueError:
+            pass
+
+    if not is_ip_or_localhost:
+        dns_info = await ReconManager.enumerate_dns(params.target)
+        if dns_info.get("status") == "success":
+            records = dns_info.get("records", {})
+            if not records.get("A") and not records.get("AAAA"):
+                return StatusResponse(status="error", message=f"DNS Preflight Failed: Hostname '{dns_info.get('domain')}' could not be resolved.")
     
     asyncio.create_task(run_attack_subprocess(task_id, params))
     return StatusResponse(status="success", message="Attack sequence initiated.", recommendation=task_id)
@@ -1436,7 +1488,7 @@ async def stop_attack(params: StopParams) -> StatusResponse:
         target = state.task_info[task_id].get("target", "Unknown")
         del state.task_info[task_id]
 
-    if task_id not in state.active_tasks:
+    if task_id not in state.active_tasks and not worker_service._process:
         # Mark as aborted in DB if it was left running
         await HistoryDB.finalize_session(task_id, 'aborted')
         if was_tracked:
@@ -1444,16 +1496,9 @@ async def stop_attack(params: StopParams) -> StatusResponse:
             return StatusResponse(status="success", message=f"Task {task_id} cleared from tracking.")
         return StatusResponse(status="error", message=f"No active record found for task {task_id}.")
 
-    process = state.active_tasks[task_id]
-    await broadcast_log(json.dumps({"task_id": task_id, "type": "system", "msg": f"[*] INITIATING RECURSIVE TERMINATION FOR TASK {task_id}: Cleaning up process tree..."}), priority="high")
+    await broadcast_log(json.dumps({"task_id": task_id, "type": "system", "msg": f"[*] INITIATING TERMINATION FOR TASK {task_id}: Cleaning up process tree..."}), priority="high")
     try:
-        pid = process.pid
-        parent = psutil.Process(pid)
-        for child in parent.children(recursive=True):
-            child.kill()
-        parent.kill()
-
-        # Cleanup state immediately
+        await worker_service.stop_attack()
         if task_id in state.active_tasks:
             del state.active_tasks[task_id]
 
@@ -1463,36 +1508,22 @@ async def stop_attack(params: StopParams) -> StatusResponse:
         await HistoryDB.finalize_session(task_id, 'aborted')
 
         return StatusResponse(status="success", message=f"Task {task_id} terminated.")
-    except psutil.NoSuchProcess:
-        if task_id in state.active_tasks:
-            del state.active_tasks[task_id]
-
-        now = datetime.datetime.now().isoformat()
-        await HistoryDB._execute('''
-            UPDATE attack_sessions SET exit_status = 'aborted', end_time = ?
-            WHERE session_id = ? AND exit_status = 'running'
-        ''', (now, task_id))
-        return StatusResponse(status="success", message="Process already purged.")
     except Exception as e:
         await broadcast_log(json.dumps({"task_id": task_id, "type": "error", "msg": f"[!] TERMINATION ERROR: {e}"}), priority="high")
-        with contextlib.suppress(Exception):
-            process.kill()
         return StatusResponse(status="error", message=str(e))
+
+@app.get("/api/status", response_model=AttackStateSnapshot)
+async def get_system_status() -> AttackStateSnapshot:
+    return await state_manager.get_state()
 
 @app.get("/api/attack/status")
 async def get_attack_status() -> dict[str, Any]:
     tasks = []
     now = time.time()
-
-    # Prune stale tasks from info if they are not in active_tasks and not in C2 pending/active (simplified)
-    # Actually, we rely on stop_attack and run_attack_subprocess finally block to clean up local tasks.
-    # For distributed tasks, we might need a more complex cleanup logic.
+    snapshot = await state_manager.get_state()
 
     for task_id, info in list(state.task_info.items()):
         elapsed = int(now - info.get("start_time", now))
-
-        # If task is not in active_tasks AND it was a local task (duration > 0 and elapsed > duration + 10)
-        # we consider it finished and potentially clean it up here if it missed the finally block
         if task_id not in state.active_tasks and info.get("duration", 0) > 0 and elapsed > info["duration"] + 30:
              del state.task_info[task_id]
              continue
@@ -1504,9 +1535,27 @@ async def get_attack_status() -> dict[str, Any]:
             "threads": info.get("threads"),
             "duration": info.get("duration"),
             "elapsed": elapsed,
-            "status": "running" if task_id in state.active_tasks else "distributed"
+            "status": "running" if (task_id in state.active_tasks or snapshot.status == AttackStatus.RUNNING) else "distributed"
         })
-    return {"status": "success", "active_tasks": tasks, "max_concurrent": state.max_concurrent}
+
+    if not tasks and snapshot.status == AttackStatus.RUNNING and snapshot.attack_id:
+        tasks.append({
+            "task_id": snapshot.attack_id,
+            "target": snapshot.target,
+            "method": snapshot.method,
+            "threads": snapshot.stats.get("threads", 0),
+            "duration": snapshot.stats.get("duration", 0),
+            "elapsed": int(snapshot.elapsed_seconds),
+            "status": "running"
+        })
+
+    return {
+        "status": "success",
+        "active_tasks": tasks,
+        "max_concurrent": state.max_concurrent,
+        "snapshot": snapshot.model_dump(mode="json"),
+        **snapshot.model_dump(mode="json")
+    }
 @app.get("/api/config/proxies")
 async def get_proxy_config() -> dict[str, Any]:
     try:
@@ -2183,14 +2232,17 @@ async def get_system_resources():
         "active_tasks": len(state.active_tasks),
     }
 
+@app.websocket("/ws")
 @app.websocket("/ws/logs")
 async def websocket_endpoint(websocket: WebSocket) -> None:
-    await websocket.accept()
-    state.connected_websockets.append(websocket)
+    await ws_manager.connect(websocket)
+    if websocket not in state.connected_websockets:
+        state.connected_websockets.append(websocket)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
+        await ws_manager.disconnect(websocket)
         if websocket in state.connected_websockets:
             state.connected_websockets.remove(websocket)
 

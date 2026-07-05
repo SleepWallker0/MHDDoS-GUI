@@ -1,5 +1,6 @@
 import { apiRequest } from '../core/api.js';
 import { showToast } from './toast.js';
+import { escapeHtml } from '../utils/helpers.js';
 
 // --- Helper: Gather current config parameters ---
 function gatherCurrentParams() {
@@ -116,19 +117,19 @@ export async function refreshPresets() {
                 return `
                     <div class="bg-black/40 border border-outline-variant rounded-xl p-4 group">
                         <div class="flex justify-between items-start mb-2">
-                            <h4 class="font-bold text-primary truncate max-w-[200px]">${k}</h4>
+                            <h4 class="font-bold text-primary truncate max-w-[200px]" title="${escapeHtml(k)}">${escapeHtml(k)}</h4>
                             <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onclick="loadPreset('${k}')" class="text-secondary hover:text-secondary-container" title="Load Profile"><span class="material-symbols-outlined text-[16px]">download</span></button>
-                                <button onclick="deletePreset('${k}')" class="text-error hover:text-error-container" title="Delete Profile"><span class="material-symbols-outlined text-[16px]">delete</span></button>
+                                <button onclick="loadPreset('${escapeHtml(k)}')" class="text-secondary hover:text-secondary-container" title="Load Profile"><span class="material-symbols-outlined text-[16px]">download</span></button>
+                                <button onclick="deletePreset('${escapeHtml(k)}')" class="text-error hover:text-error-container" title="Delete Profile"><span class="material-symbols-outlined text-[16px]">delete</span></button>
                             </div>
                         </div>
                         <div class="text-[9px] font-mono text-on-surface-variant flex gap-3">
-                            <span><span class="text-on-surface">M:</span> ${p.method}</span>
-                            <span><span class="text-on-surface">T:</span> ${p.threads}</span>
-                            <span><span class="text-on-surface">D:</span> ${p.duration}s</span>
+                            <span><span class="text-on-surface">M:</span> ${escapeHtml(p.method)}</span>
+                            <span><span class="text-on-surface">T:</span> ${escapeHtml(p.threads)}</span>
+                            <span><span class="text-on-surface">D:</span> ${escapeHtml(p.duration)}s</span>
                         </div>
-                        <div class="text-[9px] font-mono text-on-surface-variant mt-1 truncate">
-                            <span class="text-on-surface">TARGET:</span> ${p.target || 'None'}
+                        <div class="text-[9px] font-mono text-on-surface-variant mt-1 truncate" title="${escapeHtml(p.target || 'None')}">
+                            <span class="text-on-surface">TARGET:</span> ${escapeHtml(p.target || 'None')}
                         </div>
                     </div>
                 `;
@@ -215,10 +216,10 @@ export async function refreshSchedule() {
                     <div class="bg-black/40 border ${isPast ? 'border-outline-variant/50' : 'border-primary/30'} rounded-xl p-4">
                         <div class="flex justify-between items-start mb-2">
                             <div>
-                                <h4 class="font-bold text-on-surface">${s.name}</h4>
+                                <h4 class="font-bold text-on-surface" title="${escapeHtml(s.name)}">${escapeHtml(s.name)}</h4>
                                 <div class="text-[9px] font-mono font-black ${statusColor} tracking-widest uppercase mt-0.5">${statusText}</div>
                             </div>
-                            <button onclick="deleteSchedule('${k}')" class="text-error hover:text-error-container" title="Abort Operation"><span class="material-symbols-outlined text-[16px]">cancel</span></button>
+                            <button onclick="deleteSchedule('${escapeHtml(k)}')" class="text-error hover:text-error-container" title="Abort Operation"><span class="material-symbols-outlined text-[16px]">cancel</span></button>
                         </div>
                         <div class="text-[10px] font-mono text-on-surface-variant flex gap-2 items-center bg-black/50 px-2 py-1 rounded">
                             <span class="material-symbols-outlined text-[12px]">schedule</span>

@@ -1,5 +1,6 @@
 import { apiRequest } from '../core/api.js';
 import { showToast } from './toast.js';
+import { escapeHtml } from '../utils/helpers.js';
 
 export class TaskManager {
     constructor(containerId) {
@@ -46,13 +47,13 @@ export class TaskManager {
             <div class="bg-black/20 border border-outline-variant rounded-lg p-4 flex flex-col gap-3 group hover:border-primary/30 transition-all">
                 <div class="flex justify-between items-start">
                     <div class="space-y-1">
-                        <div class="text-xs font-bold text-on-surface truncate max-w-[180px]">${t.target}</div>
+                        <div class="text-xs font-bold text-on-surface truncate max-w-[180px]" title="${escapeHtml(t.target)}">${escapeHtml(t.target)}</div>
                         <div class="flex items-center gap-2">
-                            <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 uppercase">${t.method}</span>
-                            <span class="text-[9px] font-mono text-on-surface-variant/60">ID: ${t.task_id.substring(0, 8)}</span>
+                            <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 uppercase">${escapeHtml(t.method)}</span>
+                            <span class="text-[9px] font-mono text-on-surface-variant/60">ID: ${escapeHtml(String(t.task_id || '').substring(0, 8))}</span>
                         </div>
                     </div>
-                    <button onclick="stopTask('${t.task_id}')" class="text-on-surface-variant hover:text-error transition-colors">
+                    <button onclick="stopTask('${escapeHtml(t.task_id || '')}')" class="text-on-surface-variant hover:text-error transition-colors">
                         <span class="material-symbols-outlined text-sm">cancel</span>
                     </button>
                 </div>

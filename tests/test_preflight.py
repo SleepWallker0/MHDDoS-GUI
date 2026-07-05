@@ -74,7 +74,32 @@ async def test_dns_preflight_success():
                 # But our current implementation should proceed to spawn.
                 assert mock_run.called
 
+@pytest.mark.asyncio
+async def test_dns_preflight_ip_and_localhost():
+    # Test ReconManager.enumerate_dns directly
+    res_ip = await ReconManager.enumerate_dns("http://127.0.0.1:8001")
+    assert res_ip["status"] == "success"
+    assert "127.0.0.1" in res_ip["records"]["A"]
+    
+    res_local = await ReconManager.enumerate_dns("localhost:3000")
+    assert res_local["status"] == "success"
+    assert "127.0.0.1" in res_local["records"]["A"]
+    
+    # Test start_attack with IP address
+    params = AttackParams(
+        target="http://127.0.0.1:8001",
+        method="GET",
+        threads=10,
+        duration=60
+    )
+    with patch("src.app.main.fire_webhook", new_callable=AsyncMock):
+        with patch("src.app.main.run_attack_subprocess", new_callable=AsyncMock) as mock_run:
+            response = await start_attack(params)
+            assert response.status == "success"
+            assert mock_run.called
+
 if __name__ == "__main__":
     asyncio.run(test_dns_preflight_failure())
     asyncio.run(test_dns_preflight_success())
+    asyncio.run(test_dns_preflight_ip_and_localhost())
     print("Preflight tests PASSED.")

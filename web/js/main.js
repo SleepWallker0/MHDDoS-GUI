@@ -191,26 +191,31 @@ const socket = new SocketManager('/ws', (data) => {
             activeTasksEl.innerText = state.active_tasks || (status === 'running' ? 1 : 0);
         }
         
-        // Update form fields if reconciled from SSOT and not empty
+        // Update form fields if reconciled from SSOT (always sync if running/starting or on initial reconcile, or if field is empty)
+        const forceSync = (data.type === 'state_reconcile') || (status === 'running') || (status === 'starting');
         if (state.target) {
             const targetEl = document.getElementById('target');
-            if (targetEl && !targetEl.value) targetEl.value = state.target;
+            if (targetEl && (forceSync || !targetEl.value)) targetEl.value = state.target;
         }
         if (state.method) {
             const methodEl = document.getElementById('method');
-            if (methodEl && !methodEl.value) methodEl.value = state.method;
+            if (methodEl && (forceSync || !methodEl.value)) methodEl.value = state.method;
         }
         if (state.threads) {
             const threadsEl = document.getElementById('threads');
-            if (threadsEl && !threadsEl.value) threadsEl.value = state.threads;
+            if (threadsEl && (forceSync || !threadsEl.value)) {
+                threadsEl.value = state.threads;
+                const slider = document.getElementById('threads-slider');
+                if (slider) slider.value = state.threads;
+            }
         }
         if (state.duration) {
             const durationEl = document.getElementById('duration');
-            if (durationEl && !durationEl.value) durationEl.value = state.duration;
+            if (durationEl && (forceSync || !durationEl.value)) durationEl.value = state.duration;
         }
         if (state.rpc) {
             const rpcEl = document.getElementById('rpc');
-            if (rpcEl && !rpcEl.value) rpcEl.value = state.rpc;
+            if (rpcEl && (forceSync || !rpcEl.value)) rpcEl.value = state.rpc;
         }
     } else if (data.type === 'log') {
         terminal.append(data.msg, data.level, data.task_id);

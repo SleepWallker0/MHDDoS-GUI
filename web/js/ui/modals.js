@@ -1,5 +1,6 @@
 import { apiRequest } from '../core/api.js';
 import { showToast } from './toast.js';
+import { escapeHtml } from '../utils/helpers.js';
 
 export function openToolsModal() {
     const modal = document.getElementById('tools-modal');
@@ -113,9 +114,9 @@ function renderToolResult(data, tool) {
 
     container.innerHTML = `
         <div class="flex items-center justify-between border-b border-outline-variant pb-2 mb-2">
-            <div class="text-primary font-mono font-bold text-[10px] uppercase">> ${tool}_RESULT</div>
+            <div class="text-primary font-mono font-bold text-[10px] uppercase">> ${escapeHtml(tool)}_RESULT</div>
         </div>
-        <pre class="text-[11px] font-mono leading-relaxed text-on-surface-variant overflow-x-auto whitespace-pre-wrap">${JSON.stringify(data, null, 2)}</pre>
+        <pre class="text-[11px] font-mono leading-relaxed text-on-surface-variant overflow-x-auto whitespace-pre-wrap">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
     `;
     resultArea.appendChild(container);
     resultArea.scrollTop = resultArea.scrollHeight;
@@ -184,7 +185,7 @@ function renderConfigSources(providers) {
                 <option value="4" ${p.type === 4 ? 'selected' : ''}>SOCKS4</option>
                 <option value="5" ${p.type === 5 ? 'selected' : ''}>SOCKS5</option>
             </select>
-            <input type="text" value="${p.url}" class="flex-1 bg-transparent border-b border-outline text-xs px-2 py-1 outline-none" />
+            <input type="text" value="${escapeHtml(p.url)}" class="flex-1 bg-transparent border-b border-outline text-xs px-2 py-1 outline-none" />
             <button class="text-on-surface-variant hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"><span class="material-symbols-outlined text-sm">delete</span></button>
         `;
         container.appendChild(item);

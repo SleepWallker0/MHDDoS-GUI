@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.5] - 2026-07-05
+### Added
+- **Unified State Manager (`src/core/state_manager.py`)**: Implemented thread-safe Single Source of Truth (SSOT) using `asyncio.Lock()` and Pydantic V2 models (`AttackStateSnapshot`, `AttackStatus`) to prevent state desynchronization across UI and backend layers.
+- **Resilient WebSocket Connection Manager (`src/api/ws_manager.py`)**: Implemented `ConnectionManager` with concurrent non-blocking broadcasts (`asyncio.gather`) and automatic state reconciliation (`state_reconcile`) upon client connection.
+- **Local IP & Loopback Target Support**: Hardened DNS Preflight reconnaissance (`ReconManager.enumerate_dns`) and attack initiation (`start_attack`) to seamlessly support IP address targets (IPv4/IPv6) and `localhost`, preventing premature preflight rejections.
+
+### Fixed
+- **WebSocket Log Broadcaster Crash (Critical)**: Fixed `AttributeError: 'ConnectionManager' object has no attribute '_connections'` in `log_broadcaster_daemon()` by referencing `ws_manager._clients` and checking both `state.connected_websockets` and `ws_manager._clients`.
+
 ## [1.6.4] - 2026-05-09
 ### Added
 - **Project Reorganization (src-layout)**: Transitioned to a professional Python project structure. Moved core logic to `src/`, compiled binaries to `bin/`, and data assets to `data/`.

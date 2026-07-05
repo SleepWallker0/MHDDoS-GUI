@@ -21,12 +21,23 @@ class WorkerService:
         self._monitor_task: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
 
-    async def start_attack(self, target: str, duration: int, threads: int, method: str = "GET", rpc: int = 100) -> None:
+    async def start_attack(
+        self,
+        target: str,
+        duration: int,
+        threads: int,
+        method: str = "GET",
+        rpc: int = 100,
+        *,
+        attack_id: str | None = None,
+        cmd_args: list[str] | None = None,
+        log_callback: Any | None = None,
+    ) -> None:
         async with self._lock:
             if self._process is not None and self._process.returncode is None:
                 raise RuntimeError("An attack is already running.")
 
-            cmd = [
+            cmd = cmd_args if cmd_args is not None else [
                 sys.executable, "-m", "mhddos_gui.cli",
                 "--target", target,
                 "--duration", str(duration),
@@ -40,7 +51,7 @@ class WorkerService:
                 self._process = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
                 )
             except Exception as exc:
                 logger.error(f"Failed to spawn attack process: {exc}")
@@ -55,10 +66,15 @@ class WorkerService:
                 method=method,
                 rpc=rpc,
             )
-            await state_manager.update_status(AttackStatus.RUNNING)
+            await state_manager.transition(
+                AttackStatus.RUNNING,
+                attack_id=attack_id or "local-1",
+                target=target,
+                method=method,
+            )
             await self._broadcast_state()
 
-            self._monitor_task = asyncio.create_task(self._monitor_process(self._process))
+            self._monitor_task = asyncio.create_task(self._monitor_process(self._process, log_callback))
 
     async def stop_attack(self) -> None:
         async with self._lock:
@@ -87,8 +103,31 @@ class WorkerService:
         await state_manager.update_status(AttackStatus.STOPPED)
         await self._broadcast_state()
 
-    async def _monitor_process(self, proc: asyncio.subprocess.Process) -> None:
+    async def _monitor_process(self, proc: asyncio.subprocess.Process, log_callback: Any | None = None) -> None:
         try:
+            if proc.stdout and hasattr(proc.stdout, "readline"):
+                while True:
+                    try:
+                        line = await proc.stdout.readline()
+                    except Exception:
+                        break
+                    if not line or not isinstance(line, (bytes, str)):
+                        break
+                    if isinstance(line, bytes):
+                        decoded = line.decode("utf-8", errors="replace").strip()
+                    else:
+                        decoded = str(line).strip()
+                    if not decoded:
+                        continue
+                    if log_callback:
+                        try:
+                            if asyncio.iscoroutinefunction(log_callback):
+                                await log_callback(decoded)
+                            else:
+                                log_callback(decoded)
+                        except Exception as e:
+                            logger.debug(f"Error in log_callback: {e}")
+
             returncode = await proc.wait()
             async with self._lock:
                 if self._process is proc:

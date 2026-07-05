@@ -101,4 +101,39 @@ def test_websocket_reconnect_reconciliation(mock_exec: AsyncMock, client: TestCl
         client.post("/api/attack/stop")
 
 
+@pytest.mark.asyncio
+async def test_log_broadcaster_no_attribute_error():
+    from src.app.main import state, log_broadcaster_daemon, ws_manager
+    from unittest.mock import AsyncMock
+    import asyncio
+    
+    # Put a log in state.log_queue
+    if state.log_queue is None:
+        state.log_queue = asyncio.Queue(maxsize=5000)
+    await state.log_queue.put("Test log message")
+    
+    # Create a mock websocket
+    mock_ws = AsyncMock()
+    mock_ws.send_text = AsyncMock()
+    
+    # Add to ws_manager._clients
+    ws_manager._clients.add(mock_ws)
+    
+    try:
+        daemon_task = asyncio.create_task(log_broadcaster_daemon())
+        await asyncio.sleep(0.3)
+        daemon_task.cancel()
+        try:
+            await daemon_task
+        except asyncio.CancelledError:
+            pass
+            
+        assert mock_ws.send_text.called
+        call_args = mock_ws.send_text.call_args[0][0]
+        assert "Test log message" in call_args
+    finally:
+        ws_manager._clients.discard(mock_ws)
+
+
+
 

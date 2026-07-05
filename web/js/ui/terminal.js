@@ -2,6 +2,7 @@
  * MHDDoS PRO - Terminal UI Component
  * Handles the display and management of real-time log entries with level filtering.
  */
+import { escapeHtml } from '../utils/helpers.js';
 
 export class TerminalUI {
     constructor(containerId) {
@@ -41,10 +42,10 @@ export class TerminalUI {
 
         entry.innerHTML = `
             <div class="flex items-center gap-3">
-                <span class="text-[9px] font-mono opacity-40 shrink-0 select-none">${timestamp}</span>
-                <span class="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-current/10 border border-current/20 shrink-0">${level}</span>
-                <span class="font-mono text-[12px] leading-relaxed break-all flex-grow">${msg}</span>
-                ${taskId ? `<span class="text-[8px] font-mono opacity-30 group-hover:opacity-100 transition-opacity bg-white/10 px-1 rounded uppercase tracking-tighter shrink-0">ID:${taskId.substring(0,6)}</span>` : ''}     
+                <span class="text-[9px] font-mono opacity-40 shrink-0 select-none">${escapeHtml(timestamp)}</span>
+                <span class="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-current/10 border border-current/20 shrink-0">${escapeHtml(level)}</span>
+                <span class="font-mono text-[12px] leading-relaxed break-all flex-grow">${escapeHtml(msg)}</span>
+                ${taskId ? `<span class="text-[8px] font-mono opacity-30 group-hover:opacity-100 transition-opacity bg-white/10 px-1 rounded uppercase tracking-tighter shrink-0">ID:${escapeHtml(String(taskId).substring(0,6))}</span>` : ''}     
             </div>
         `;
 

@@ -1,5 +1,5 @@
 import { apiRequest } from '../core/api.js';
-import { formatBytes } from '../utils/helpers.js';
+import { formatBytes, escapeHtml } from '../utils/helpers.js';
 
 let historyPage = 1;
 
@@ -67,14 +67,14 @@ function renderHistoryTable(data) {
 
     tbody.innerHTML = data.sessions.map(s => `
         <tr class="hover:bg-surface-container-high transition-colors border-b border-outline-variant last:border-0 cursor-pointer">
-            <td class="py-3 px-6 text-on-surface-variant font-mono text-[9px]">${s.start_time.replace('T', ' ').substring(0, 19)}</td>
-            <td class="py-3 px-6 text-on-surface font-mono font-bold truncate max-w-[200px]">${s.target}</td>        
-            <td class="py-3 px-6 text-primary font-black text-[9px] tracking-widest">${s.method}</td>
+            <td class="py-3 px-6 text-on-surface-variant font-mono text-[9px]">${escapeHtml((s.start_time || '').replace('T', ' ').substring(0, 19))}</td>
+            <td class="py-3 px-6 text-on-surface font-mono font-bold truncate max-w-[200px]" title="${escapeHtml(s.target)}">${escapeHtml(s.target)}</td>        
+            <td class="py-3 px-6 text-primary font-black text-[9px] tracking-widest">${escapeHtml(s.method)}</td>
             <td class="py-3 px-6 text-right font-mono text-on-surface">
                 <div>${(s.peak_pps || 0).toLocaleString()} PPS</div>
                 <div class="text-[8px] text-on-surface-variant">${formatBytes(s.peak_bps || 0)}</div>
             </td>
-            <td class="py-3 px-6 text-center"><span class="px-2 py-0.5 rounded-md border border-outline-variant text-[8px] font-black uppercase tracking-widest">${s.exit_status}</span></td>
+            <td class="py-3 px-6 text-center"><span class="px-2 py-0.5 rounded-md border border-outline-variant text-[8px] font-black uppercase tracking-widest">${escapeHtml(s.exit_status)}</span></td>
         </tr>
     `).join('');
 }
