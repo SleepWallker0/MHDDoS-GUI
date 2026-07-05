@@ -44,6 +44,38 @@ class StateManager:
         async with self._lock:
             return self._state
 
+    def _transition_locked(
+        self,
+        status: AttackStatus,
+        *,
+        attack_id: str | None = None,
+        target: str | None = None,
+        method: str | None = None,
+        stats: dict[str, Any] | None = None,
+        error_detail: str | None = None,
+    ) -> AttackStateSnapshot:
+        current_time = time.time()
+        start_time = self._state.start_time
+
+        if status == AttackStatus.RUNNING and self._state.status != AttackStatus.RUNNING:
+            start_time = current_time
+        elif status in (AttackStatus.IDLE, AttackStatus.STOPPED, AttackStatus.COMPLETED, AttackStatus.ERROR):
+            start_time = None
+
+        elapsed = (current_time - start_time) if start_time else 0.0
+
+        self._state = AttackStateSnapshot(
+            status=status,
+            attack_id=attack_id if attack_id is not None else self._state.attack_id,
+            target=target if target is not None else self._state.target,
+            method=method if method is not None else self._state.method,
+            start_time=start_time,
+            elapsed_seconds=elapsed,
+            stats=stats if stats is not None else self._state.stats,
+            error_detail=error_detail,
+        )
+        return self._state
+
     async def transition(
         self,
         status: AttackStatus,
@@ -56,27 +88,14 @@ class StateManager:
     ) -> AttackStateSnapshot:
         """Atomically transition state and notify all real-time subscribers."""
         async with self._lock:
-            current_time = time.time()
-            start_time = self._state.start_time
-
-            if status == AttackStatus.RUNNING and self._state.status != AttackStatus.RUNNING:
-                start_time = current_time
-            elif status in (AttackStatus.IDLE, AttackStatus.STOPPED, AttackStatus.COMPLETED, AttackStatus.ERROR):
-                start_time = None
-
-            elapsed = (current_time - start_time) if start_time else 0.0
-
-            self._state = AttackStateSnapshot(
+            snapshot = self._transition_locked(
                 status=status,
-                attack_id=attack_id if attack_id is not None else self._state.attack_id,
-                target=target if target is not None else self._state.target,
-                method=method if method is not None else self._state.method,
-                start_time=start_time,
-                elapsed_seconds=elapsed,
-                stats=stats if stats is not None else self._state.stats,
+                attack_id=attack_id,
+                target=target,
+                method=method,
+                stats=stats,
                 error_detail=error_detail,
             )
-            snapshot = self._state
 
         await self._notify_subscribers(snapshot)
         return snapshot
@@ -104,9 +123,17 @@ class StateManager:
             stats_update["threads"] = threads
         if rpc is not None:
             stats_update["rpc"] = rpc
-        current_stats = self._state.stats.copy() if self._state.stats else {}
-        current_stats.update(stats_update)
-        return await self.transition(self._state.status, target=target, method=method, stats=current_stats)
+        async with self._lock:
+            current_stats = self._state.stats.copy() if self._state.stats else {}
+            current_stats.update(stats_update)
+            snapshot = self._transition_locked(
+                self._state.status,
+                target=target,
+                method=method,
+                stats=current_stats,
+            )
+        await self._notify_subscribers(snapshot)
+        return snapshot
 
     async def _notify_subscribers(self, snapshot: AttackStateSnapshot) -> None:
         for queue in list(self._subscribers):
