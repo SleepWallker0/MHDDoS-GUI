@@ -72,32 +72,37 @@ export class UIProMax {
 
         if (!deployBtn) return;
 
+        // Step 1: Cleanup previous state classes and attributes
+        deployBtn.classList.remove('bg-primary', 'bg-primary/70', 'bg-error', 'bg-error/70', 'tactical-glow-primary', 'tactical-glow-error', 'shadow-none', 'cursor-not-allowed');
+        deployIcon.classList.remove('animate-spin');
+
+        // Step 2: Apply specific state transitions
         switch(state) {
             case 'running':
-                deployBtn.classList.remove('bg-primary');
-                deployBtn.classList.add('bg-error');
+                deployBtn.disabled = false;
+                deployBtn.classList.add('bg-error', 'tactical-glow-error');
                 deployText.innerText = 'Stop Attack';
                 deployIcon.innerText = 'stop_circle';
                 break;
             case 'starting':
                 deployBtn.disabled = true;
+                deployBtn.classList.add('bg-primary/70', 'shadow-none', 'cursor-not-allowed');
                 deployText.innerText = 'Initializing...';
                 deployIcon.innerText = 'hourglass_empty';
                 deployIcon.classList.add('animate-spin');
                 break;
             case 'stopping':
                 deployBtn.disabled = true;
+                deployBtn.classList.add('bg-error/70', 'shadow-none', 'cursor-not-allowed');
                 deployText.innerText = 'Stopping...';
                 deployIcon.innerText = 'refresh';
                 deployIcon.classList.add('animate-spin');
                 break;
-            default:
+            default: // 'idle'
                 deployBtn.disabled = false;
-                deployBtn.classList.add('bg-primary');
-                deployBtn.classList.remove('bg-error');
+                deployBtn.classList.add('bg-primary', 'tactical-glow-primary');
                 deployText.innerText = 'Start Attack';
                 deployIcon.innerText = 'play_arrow';
-                deployIcon.classList.remove('animate-spin');
         }
     }
 }
