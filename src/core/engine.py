@@ -59,6 +59,7 @@ from urllib import parse
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 import traceback
+from src.core.debugger import BypassDebugger
 
 import psutil
 import requests
@@ -1675,8 +1676,10 @@ class BrowserEngine:
                 if "cf_clearance" in cookie_str:
                     ua = resp.request.headers.get("User-Agent", user_agent)
                     return cookie_str, ua
-        except Exception:
-            pass
+            else:
+                BypassDebugger.capture_failure("Tier 1 (Cloudscraper)", url, error_msg=f"HTTP {resp.status_code}", response_obj=resp)
+        except Exception as e:
+            BypassDebugger.capture_failure("Tier 1 (Cloudscraper)", url, error_msg=str(e))
 
         # 1b. curl_cffi
         if CURL_CFFI_INSTALLED:
@@ -1707,19 +1710,22 @@ class BrowserEngine:
                 
                 @browser(proxy=get_proxy, block_images_and_css=True, headless=True, close_on_crash=True)
                 def bot_solve(driver: Driver, data):
-                    driver.google_get(data["url"], bypass_cloudflare=True)
-                    cookies = driver.get_cookies_dict()
-                    cookie_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
-                    ua = driver.run_js("return navigator.userAgent")
-                    if "cf_clearance" in cookie_str:
-                        return cookie_str, ua
+                    try:
+                        driver.google_get(data["url"], bypass_cloudflare=True)
+                        cookies = driver.get_cookies_dict()
+                        cookie_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+                        ua = driver.run_js("return navigator.userAgent")
+                        if "cf_clearance" in cookie_str:
+                            return cookie_str, ua
+                    except Exception as e:
+                        BypassDebugger.capture_failure("Tier 2 (Botasaurus)", data["url"], page_obj=driver, error_msg=str(e))
                     return None, None
                 
                 res = bot_solve([{"url": url, "proxy": proxy}])
                 if res and res[0] and res[0][0]:
                     return res[0][0], res[0][1]
-            except Exception:
-                pass
+            except Exception as e:
+                BypassDebugger.capture_failure("Tier 2 (Botasaurus-Launch)", url, error_msg=str(e))
                 
         # 2b. Nodriver
         if NODRIVER_INSTALLED:
@@ -1736,6 +1742,9 @@ class BrowserEngine:
                         ua = await page.evaluate("navigator.userAgent")
                         if "cf_clearance" in cookie_str:
                             return cookie_str, ua
+                        BypassDebugger.capture_failure("Tier 2 (Nodriver)", url, page_obj=page, error_msg="Challenge not solved")
+                    except Exception as e:
+                        BypassDebugger.capture_failure("Tier 2 (Nodriver)", url, error_msg=str(e))
                     finally:
                         browser.stop()
                     return None, None
@@ -1765,6 +1774,9 @@ class BrowserEngine:
                         if "cf_clearance" in cookie_str:
                             ua = page.run_js("return navigator.userAgent")
                             return cookie_str, ua
+                    BypassDebugger.capture_failure("Tier 2 (DrissionPage)", url, page_obj=page, error_msg="Challenge not solved")
+                except Exception as e:
+                    BypassDebugger.capture_failure("Tier 2 (DrissionPage)", url, page_obj=page, error_msg=str(e))
                 finally:
                     page.quit()
             except Exception:
@@ -1790,27 +1802,31 @@ class BrowserEngine:
                 try:
                     context = browser.new_context(user_agent=user_agent) if user_agent else browser.new_context()
                     page = context.new_page()
-                    page.goto(url, timeout=timeout * 1000)
-                    
-                    from time import sleep
-                    for i in range(15):
-                        sleep(2)
-                        cookies = context.cookies()
-                        cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
-                        if "cf_clearance" in cookie_str:
-                            ua = page.evaluate("navigator.userAgent")
-                            return cookie_str, ua
+                    try:
+                        page.goto(url, timeout=timeout * 1000)
                         
-                        # Adaptive Interaction: Move mouse slightly to trigger human behavior
-                        if i % 3 == 0:
-                            try:
-                                page.mouse.move(random.randint(100, 500), random.randint(100, 500))
-                                page.mouse.wheel(0, random.randint(100, 300))
-                            except: pass
+                        from time import sleep
+                        for i in range(15):
+                            sleep(2)
+                            cookies = context.cookies()
+                            cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+                            if "cf_clearance" in cookie_str:
+                                ua = page.evaluate("navigator.userAgent")
+                                return cookie_str, ua
+                            
+                            # Adaptive Interaction: Move mouse slightly to trigger human behavior
+                            if i % 3 == 0:
+                                try:
+                                    page.mouse.move(random.randint(100, 500), random.randint(100, 500))
+                                    page.mouse.wheel(0, random.randint(100, 300))
+                                except: pass
+                        BypassDebugger.capture_failure("Tier 3 (CloakBrowser)", url, page_obj=page, error_msg="Challenge not solved")
+                    except Exception as e:
+                        BypassDebugger.capture_failure("Tier 3 (CloakBrowser)", url, page_obj=page, error_msg=str(e))
                 finally:
                     browser.close()
-            except Exception:
-                pass
+            except Exception as e:
+                BypassDebugger.capture_failure("Tier 3 (CloakBrowser-Launch)", url, error_msg=str(e))
 
         # 3b. Patchright (Stealth Playwright)
         if PATCHRIGHT_INSTALLED:
@@ -1835,10 +1851,13 @@ class BrowserEngine:
                                 try:
                                     page.mouse.move(random.randint(100, 500), random.randint(100, 500))
                                 except: pass
+                        BypassDebugger.capture_failure("Tier 3 (Patchright)", url, page_obj=page, error_msg="Challenge not solved")
+                    except Exception as e:
+                        BypassDebugger.capture_failure("Tier 3 (Patchright)", url, page_obj=page, error_msg=str(e))
                     finally:
                         browser.close()
-            except Exception:
-                pass
+            except Exception as e:
+                BypassDebugger.capture_failure("Tier 3 (Patchright-Launch)", url, error_msg=str(e))
 
         # 3c. Undetected Chromedriver
         if UNDETECTED_CHROMEDRIVER_INSTALLED:
@@ -1866,10 +1885,13 @@ class BrowserEngine:
                             try:
                                 driver.execute_script(f"window.scrollBy(0, {random.randint(100, 300)});")
                             except: pass
+                    BypassDebugger.capture_failure("Tier 3 (UC)", url, page_obj=driver, error_msg="Challenge not solved")
+                except Exception as e:
+                    BypassDebugger.capture_failure("Tier 3 (UC)", url, page_obj=driver, error_msg=str(e))
                 finally:
                     driver.quit()
-            except Exception:
-                pass
+            except Exception as e:
+                BypassDebugger.capture_failure("Tier 3 (UC-Launch)", url, error_msg=str(e))
 
         return None, None
 
@@ -1909,10 +1931,13 @@ class BrowserEngine:
                                     page.mouse.move(random.randint(100, 500), random.randint(100, 500))
                                     page.mouse.wheel(0, random.randint(100, 300))
                                 except: pass
+                        BypassDebugger.capture_failure("Tier 4 (Camoufox)", url, page_obj=page, error_msg="Challenge not solved")
+                    except Exception as e:
+                        BypassDebugger.capture_failure("Tier 4 (Camoufox)", url, page_obj=page, error_msg=str(e))
                     finally:
                         pass # Camoufox context manager handles it
-            except Exception:
-                pass
+            except Exception as e:
+                BypassDebugger.capture_failure("Tier 4 (Camoufox-Launch)", url, error_msg=str(e))
 
         return None, None
 

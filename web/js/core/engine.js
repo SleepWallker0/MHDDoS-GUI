@@ -4,6 +4,10 @@ import { uiProMax } from '../ui/ui-pro-max.js';
 
 let isRunning = false;
 
+export function setIsRunning(val) {
+    isRunning = Boolean(val);
+}
+
 /**
  * Normalizes a URL or IP to ensure it's in the format start.py expects.
  */

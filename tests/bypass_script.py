@@ -230,144 +230,218 @@ def test_tier_1b(url, proxy=None, user_agent=None):
 
 
 def test_tier_2_nodriver(url, proxy=None, user_agent=None):
-    """Tier 2: Nodriver (full browser)"""
+    """Tier 1c/2: Nodriver (Direct CDP)"""
     logger.info(f"{C.B}{'='*60}")
-    logger.info(f"  TIER 2: Nodriver (CDP Chromium)")
+    logger.info(f"  TIER 1c: Nodriver (Native CDP)")
     logger.info(f"{'='*60}{C.X}")
-    
-    if not DEPS["nodriver"]:
-        logger.warning(f"{C.Y}[SKIP] nodriver not installed{C.X}")
-        return {"tier": "2", "solver": "Nodriver", "status": "SKIP", "reason": "not installed"}
-    
-    MAX_SECONDS = 60  # Hard timeout for entire test
-    start = time.time()
-    chrome_pid = None
-    
+
     try:
-        import asyncio
         import nodriver as uc
-        
-        async def run():
-            nonlocal chrome_pid
-            browser_args = [
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-            ]
-            if sys.platform.lower().startswith("win"):
-                browser_args.append("--window-position=-32000,-32000")
-            if proxy:
-                proxy_url = f"http://{proxy}" if "://" not in proxy else proxy
-                browser_args.append(f"--proxy-server={proxy_url}")
+        import asyncio
+        NODRIVER_AVAILABLE = True
+    except ImportError:
+        NODRIVER_AVAILABLE = False
+
+    if not NODRIVER_AVAILABLE:
+        logger.warning(f"{C.Y}[SKIP] Nodriver not installed{C.X}")
+        return {"tier": "1c", "solver": "Nodriver", "status": "SKIP", "reason": "not installed"}
+
+    start = time.time()
+
+    async def _solve():
+        browser = await uc.start()
+        try:
+            page = await browser.get(url)
             
-            browser = await uc.start(browser_args=[arg for arg in browser_args if arg])
-            # Capture Chrome PID for force-kill
-            try:
-                chrome_pid = browser._process.pid if hasattr(browser, '_process') and browser._process else None
-                logger.info(f"  Chrome PID: {chrome_pid}")
-            except:
-                pass
-            
-            page = browser.main_tab
-            
-            logger.info(f"  Navigating to {url}...")
-            await page.evaluate(f'window.location.href = "{url}";')
-            
-            start_wait = time.time()
             solved = False
             cookie_str = ""
-            title = ""
+            ua = "Unknown"
+            title = "N/A"
             
-            while time.time() - start_wait < 45:  # Match start.py's 45s window
+            for pulse in range(20):
                 try:
-                    title = await page.evaluate('document.title')
-                    title_clean = str(title).encode('ascii', 'ignore').decode('ascii')
+                    # 1. Sequential Delay
+                    await asyncio.sleep(2.5)
                     
+                    # 2. Check cookies (Nodriver 0.50+ API)
                     cookies = await browser.cookies.get_all()
-                    cookie_names = [c.name for c in cookies]
                     cookie_str = "; ".join([f"{c.name}={c.value}" for c in cookies])
                     
-                    is_challenge = any(k in str(title).lower() for k in [
-                        "just a moment", "checking your browser", "enable javascript",
-                        "access denied", "attention required", "ddos-guard", "cloudflare"
-                    ])
-                    
-                    elapsed_iter = round(time.time() - start, 2)
-                    logger.info(f"  [{elapsed_iter}s] Title='{title_clean[:50]}', Challenge={'YES' if is_challenge else 'NO'}, Cookies={cookie_names[:5]}")
-                    
                     if "cf_clearance" in cookie_str:
-                        logger.info(f"{C.G}  cf_clearance FOUND!{C.X}")
                         solved = True
                         break
-                    
-                    # If title is good and not a challenge, don't loop forever
-                    if not is_challenge and title and len(title) > 2:
-                        logger.info(f"  Title OK ('{title_clean[:40]}') — no challenge detected. Will check once more then exit.")
-                        await asyncio.sleep(3)
-                        # Re-check cookies after wait
-                        cookies = await browser.cookies.get_all()
-                        cookie_str = "; ".join([f"{c.name}={c.value}" for c in cookies])
-                        if "cf_clearance" in cookie_str:
-                            solved = True
-                        break
-                    
+
+                    # 3. Detect and click Turnstile iframes
+                    try:
+                        iframes = await page.select_all("iframe")
+                        for iframe in iframes:
+                            src = getattr(iframe, "src", "").lower()
+                            if "cloudflare" in src or "turnstile" in src:
+                                logger.info(f"  Interaction pulse {pulse+1}: Clicking Turnstile iframe...")
+                                await iframe.mouse_click()
+                                break
+                    except Exception:
+                        pass
+
+                except AssertionError:
+                    logger.error("  [!] Nodriver Concurrency Error (websockets). Aborting.")
+                    return None, None, "concurrency_error"
                 except Exception as e:
-                    logger.debug(f"  Loop error: {e}")
-                
-                await asyncio.sleep(3)
+                    logger.debug(f"  [*] Loop Warning: {e}")
+                    await asyncio.sleep(1.0)
             
+            # Final extraction
             try:
-                ua = await asyncio.wait_for(page.evaluate('navigator.userAgent'), timeout=2)
+                cookies = await browser.cookies.get_all()
+                cookie_str = "; ".join([f"{c.name}={c.value}" for c in cookies])
+                ua = await page.evaluate("navigator.userAgent")
+                title = await page.evaluate("document.title")
+                return cookie_str, ua, title
             except:
-                ua = "Unknown"
-            
-            try:
-                res = browser.stop()
-                if asyncio.iscoroutine(res):
-                    await asyncio.wait_for(res, timeout=2)
-            except:
-                pass
-            
-            return solved, cookie_str, ua, title
-        
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            solved, cookie_str, ua, title = loop.run_until_complete(run())
+                return cookie_str, ua, title
+
         finally:
             try:
-                loop.close()
-            except (ValueError, OSError):
+                browser.stop()
+            except:
                 pass
-            # Force-kill Chrome if it's still alive
-            _kill_chrome(chrome_pid)
+
+    try:
+        res = asyncio.run(_solve())
+        if res is None or res[0] is None:
+            cookie_str, ua, title = "", "Unknown", "N/A"
+        else:
+            cookie_str, ua, title = res
+            
+        elapsed = round(time.time() - start, 2)
+        has_clearance = cookie_str and "cf_clearance" in cookie_str
+        
+        result = {
+            "tier": "1c",
+            "solver": "Nodriver",
+            "status": "SUCCESS" if has_clearance else "FAILED",
+            "has_cf_clearance": has_clearance,
+            "time_s": elapsed,
+        }
+        
+        if title: result["title"] = str(title)[:60]
+
+        status_color = C.G if has_clearance else C.R
+        logger.info(f"{status_color}  Result:         {'SUCCESS' if has_clearance else 'FAILED'}")
+        logger.info(f"  cf_clearance:   {'✓ FOUND' if has_clearance else '✗ NOT FOUND'}")
+        if title: logger.info(f"  Page Title:     {str(title)[:50]}")
+        logger.info(f"  Time:           {elapsed}s{C.X}")
+        return result
+
+    except Exception as e:
+        elapsed = round(time.time() - start, 2)
+        logger.error(f"{C.R}  FAILED in {elapsed}s: {e}{C.X}")
+        return {"tier": "1c", "solver": "Nodriver", "status": "ERROR", "error": str(e), "time_s": elapsed}
+
+
+
+def test_tier_2_drissionpage(url, proxy=None, user_agent=None):
+    """Tier 2: DrissionPage"""
+    logger.info(f"{C.B}{'='*60}")
+    logger.info(f"  TIER 2: DrissionPage (Shadow DOM)")
+    logger.info(f"{'='*60}{C.X}")
+    
+    # Check if DrissionPage is installed
+    try:
+        from DrissionPage import ChromiumPage, ChromiumOptions
+        DRISSION_AVAILABLE = True
+    except ImportError:
+        DRISSION_AVAILABLE = False
+
+    if not DRISSION_AVAILABLE:
+        logger.warning(f"{C.Y}[SKIP] DrissionPage not installed{C.X}")
+        return {"tier": "2", "solver": "DrissionPage", "status": "SKIP", "reason": "not installed"}
+    
+    start = time.time()
+    try:
+        from DrissionPage import ChromiumPage, ChromiumOptions
+        from random import randint
+        
+        co = ChromiumOptions()
+        co.auto_port()
+        if sys.platform != "win32":
+            co.set_argument('--no-sandbox')
+            co.set_argument('--headless=new')
+        
+        if proxy:
+            px_url = f"http://{proxy}" if "://" not in proxy else proxy
+            co.set_argument(f'--proxy-server={px_url}')
+
+        page = ChromiumPage(co)
+        page.set.timeouts(page_load=15, script=10)
+        
+        try:
+            page.get(url, retry=0, timeout=15)
+        except:
+            pass
+
+        solved = False
+        cookie_str = ""
+        
+        for pulse in range(20):
+            cookies = page.cookies()
+            cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+            title = page.title
+
+            if "cf_clearance" in cookie_str:
+                solved = True
+                break
+
+            # Shadow DOM Traversal logic
+            try:
+                all_inputs = page.eles("tag:input")
+                for input_elem in all_inputs:
+                    name = input_elem.attr("name")
+                    if name and "turnstile" in name.lower():
+                        parent = input_elem.parent()
+                        if parent and parent.shadow_root:
+                            shadow1 = parent.shadow_root
+                            for child in shadow1.children():
+                                if child.tag == "iframe":
+                                    iframe_body = child("tag:body")
+                                    if iframe_body and iframe_body.shadow_root:
+                                        shadow2 = iframe_body.shadow_root
+                                        checkbox = shadow2("tag:input")
+                                        if checkbox:
+                                            logger.info(f"  Turnstile found! Clicking...")
+                                            checkbox.click()
+                                            solved = True
+                                            break
+            except:
+                pass
+            
+            time.sleep(2)
+        
+        ua = page.run_js("return navigator.userAgent;")
+        page.quit()
         
         elapsed = round(time.time() - start, 2)
         has_clearance = "cf_clearance" in cookie_str
         
         result = {
             "tier": "2",
-            "solver": "Nodriver",
-            "status": "SUCCESS" if has_clearance else "PROBE_BYPASS" if solved else "FAILED",
+            "solver": "DrissionPage",
+            "status": "SUCCESS" if has_clearance else "FAILED",
             "has_cf_clearance": has_clearance,
-            "title": str(title)[:80] if title else "N/A",
+            "title": title[:60],
             "time_s": elapsed,
-            "user_agent": ua[:60] if ua else "N/A",
         }
         
-        status_color = C.G if has_clearance or solved else C.R
-        logger.info(f"{status_color}  Result:         {'SUCCESS' if has_clearance else 'PROBE' if solved else 'FAILED'}")
+        status_color = C.G if has_clearance else C.R
+        logger.info(f"{status_color}  Result:         {'SUCCESS' if has_clearance else 'FAILED'}")
         logger.info(f"  cf_clearance:   {'✓ FOUND' if has_clearance else '✗ NOT FOUND'}")
-        logger.info(f"  Final Title:    {str(title)[:60]}")
         logger.info(f"  Time:           {elapsed}s{C.X}")
         return result
         
     except Exception as e:
         elapsed = round(time.time() - start, 2)
         logger.error(f"{C.R}  FAILED in {elapsed}s: {type(e).__name__}: {e}{C.X}")
-        logger.debug(traceback.format_exc())
-        _kill_chrome(chrome_pid)
-        return {"tier": "2", "solver": "Nodriver", "status": "ERROR", "error": str(e), "time_s": elapsed}
+        return {"tier": "2", "solver": "DrissionPage", "status": "ERROR", "error": str(e), "time_s": elapsed}
 
 
 def test_tier_2b_camoufox(url, proxy=None, user_agent=None):
@@ -721,7 +795,7 @@ Examples:
     parser.add_argument("--url", default="https://nowsecure.nl", help="Target URL to test (default: nowsecure.nl)")
     parser.add_argument("--proxy", default=None, help="Proxy to use (host:port)")
     parser.add_argument("--ua", default=None, help="Custom User-Agent")
-    parser.add_argument("--tier", default="all", choices=["1a", "1b", "2", "2b", "2c", "all", "cascade"],
+    parser.add_argument("--tier", default="all", choices=["1a", "1b", "1c", "2", "2b", "2c", "all", "cascade"],
                         help="Which tier to test (default: all)")
     parser.add_argument("--test-adaptive", action="store_true", help="Test ADAPTIVE WAF fingerprinting")
     parser.add_argument("--output", default=None, help="Save results to JSON file")
@@ -759,10 +833,11 @@ Examples:
     tier_map = {
         "1a": [test_tier_1a],
         "1b": [test_tier_1b],
-        "2":  [test_tier_2_nodriver],
+        "1c": [test_tier_2_nodriver],
+        "2":  [test_tier_2_drissionpage],
         "2b": [test_tier_2b_camoufox],
         "2c": [test_tier_2c_patchright],
-        "all": [test_tier_1a, test_tier_1b, test_tier_2_nodriver, test_tier_2b_camoufox, test_tier_2c_patchright],
+        "all": [test_tier_1a, test_tier_1b, test_tier_2_nodriver, test_tier_2_drissionpage, test_tier_2b_camoufox, test_tier_2c_patchright],
         "cascade": [],  # Uses full cascade
     }
     

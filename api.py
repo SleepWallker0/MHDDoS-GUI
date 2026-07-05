@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 
 from src.core.state_manager import state_manager, AttackStateSnapshot
 from src.api.ws_manager import ws_manager

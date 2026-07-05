@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, AsyncMock
 from api import app
 from src.core.state_manager import state_manager, AttackStatus
+from src.worker.service import worker_service
 
 
 @pytest.fixture
@@ -43,3 +44,61 @@ def test_websocket_endpoint_reconcile(client: TestClient) -> None:
         data = websocket.receive_json()
         assert data["type"] == "state_reconcile"
         assert "status" in data["payload"]
+
+
+@patch("asyncio.create_subprocess_exec", new_callable=AsyncMock)
+def test_websocket_reconnect_reconciliation(mock_exec: AsyncMock, client: TestClient) -> None:
+    import asyncio
+    mock_proc = mock_exec.return_value
+    mock_proc.returncode = None
+    mock_proc.pid = 54321
+    
+    killed = False
+    wait_futures: list[asyncio.Future[int]] = []
+    
+    async def dummy_wait() -> int:
+        loop = asyncio.get_running_loop()
+        f = loop.create_future()
+        if killed:
+            f.set_result(0)
+        else:
+            wait_futures.append(f)
+        return await f
+        
+    mock_proc.wait.side_effect = dummy_wait
+    
+    async def dummy_kill(*args: any, **kwargs: any) -> None:
+        nonlocal killed
+        killed = True
+        for f in wait_futures:
+            if not f.done():
+                f.set_result(0)
+    
+    # First connection gets initial state
+    with client.websocket_connect("/ws") as ws1:
+        data1 = ws1.receive_json()
+        assert data1["type"] == "state_reconcile"
+        initial_status = data1["payload"]["status"]
+        assert initial_status in ("idle", "stopped", "completed", "error")
+        
+    # Simulate state change while client was disconnected
+    client.post("/api/attack/start", json={
+        "target": "https://example.com",
+        "duration": 60,
+        "threads": 10,
+        "method": "GET",
+        "rpc": 100
+    })
+    
+    # Second connection (reconnect) should immediately receive updated RUNNING state
+    with client.websocket_connect("/ws") as ws2:
+        data2 = ws2.receive_json()
+        assert data2["type"] == "state_reconcile"
+        assert data2["payload"]["status"] == "running"
+        
+    # Clean up
+    with patch.object(worker_service, "_terminate_process_tree", side_effect=dummy_kill):
+        client.post("/api/attack/stop")
+
+
+

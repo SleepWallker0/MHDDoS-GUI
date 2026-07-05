@@ -28,6 +28,10 @@ nodriver>=0.48.1
 curl-cffi>=0.14.0
 httpx[http2]>=0.28.1
 h3>=4.4.2
+DrissionPage>=4.0.0
+camoufox[geoip]>=0.4.0
+patchright>=1.46.0-beta.1
+cloakbrowser[geoip]
 undetected-chromedriver>=3.5.5
 botasaurus>=4.0.0
 patchright>=1.49.0

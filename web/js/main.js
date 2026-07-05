@@ -164,8 +164,55 @@ function populateMethods() {
 }
 
 // WebSocket Orchestration
-const socket = new SocketManager('/ws/logs', (data) => {
-    if (data.type === 'log') {
+const socket = new SocketManager('/ws', (data) => {
+    if (data.type === 'state_reconcile' || data.type === 'state_update') {
+        const state = data.payload || {};
+        const status = String(state.status || 'idle').toLowerCase();
+        
+        // Update global app state and UI deploy button
+        if (status === 'running') {
+            uiProMax.setAppState('running');
+            if (engine.setIsRunning) engine.setIsRunning(true);
+        } else if (status === 'starting') {
+            uiProMax.setAppState('starting');
+        } else if (status === 'stopping') {
+            uiProMax.setAppState('stopping');
+        } else {
+            uiProMax.setAppState('idle');
+            if (engine.setIsRunning) engine.setIsRunning(false);
+        }
+        
+        const statusEl = document.getElementById('attack-status');
+        if (statusEl) statusEl.textContent = status.toUpperCase();
+        
+        // Update stats counters
+        const activeTasksEl = document.getElementById('active-tasks-count');
+        if (activeTasksEl) {
+            activeTasksEl.innerText = state.active_tasks || (status === 'running' ? 1 : 0);
+        }
+        
+        // Update form fields if reconciled from SSOT and not empty
+        if (state.target) {
+            const targetEl = document.getElementById('target');
+            if (targetEl && !targetEl.value) targetEl.value = state.target;
+        }
+        if (state.method) {
+            const methodEl = document.getElementById('method');
+            if (methodEl && !methodEl.value) methodEl.value = state.method;
+        }
+        if (state.threads) {
+            const threadsEl = document.getElementById('threads');
+            if (threadsEl && !threadsEl.value) threadsEl.value = state.threads;
+        }
+        if (state.duration) {
+            const durationEl = document.getElementById('duration');
+            if (durationEl && !durationEl.value) durationEl.value = state.duration;
+        }
+        if (state.rpc) {
+            const rpcEl = document.getElementById('rpc');
+            if (rpcEl && !rpcEl.value) rpcEl.value = state.rpc;
+        }
+    } else if (data.type === 'log') {
         terminal.append(data.msg, data.level, data.task_id);
     } else if (data.type === 'telemetry') {
         telemetry.updateTask(data.task_id, data);

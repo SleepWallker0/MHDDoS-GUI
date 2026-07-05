@@ -450,7 +450,7 @@ def build_attack_command(params: AttackParams) -> list[str]:
     proxy_list_arg = params.proxy_list
     proxy_type_code = PROXY_TYPES.get(params.proxy_type, "5")
     
-    if params.auto_harvest:
+    if params.auto_harvest or (params.proxy_list and params.proxy_list.upper() == "AUTO"):
         proxy_list_arg = "auto_harvest.txt"
     elif params.proxy_type == "All Proxy" and (not proxy_list_arg or proxy_list_arg.lower() == "none"):
         proxy_list_arg = "all.txt"
@@ -951,6 +951,67 @@ class ReconManager:
             return {"status": "success", "domain": domain, "records": records}
         except Exception as e:
             return {"status": "error", "message": str(e)}
+
+@app.get("/api/files/list")
+async def list_internal_files():
+    """Lists available proxy and reflector files for UI dropdowns."""
+    proxy_assets_dir = get_assets_path() / "proxies"
+    proxy_res_dir = BASE_DIR / "resource" / "files" / "proxies"
+    
+    refl_res_dir = BASE_DIR / "resource" / "files" / "reflectors"
+    refl_root_dir = BASE_DIR / "resource" / "files"
+    
+    proxies = ["default.txt", "auto_harvest.txt"]
+    
+    # Collect from assets (user uploads)
+    if proxy_assets_dir.exists():
+        proxies.extend([f.name for f in proxy_assets_dir.glob("*.txt")])
+        
+    # Collect from resource (defaults)
+    if proxy_res_dir.exists():
+        proxies.extend([f.name for f in proxy_res_dir.glob("*.txt")])
+        
+    reflectors = ["reflector.txt"]
+    if refl_res_dir.exists():
+        reflectors.extend([f.name for f in refl_res_dir.glob("*.txt")])
+    if refl_root_dir.exists():
+        # Add reflector.txt if it exists at root of files
+        if (refl_root_dir / "reflector.txt").exists():
+            pass # already in list
+            
+    return {
+        "status": "success",
+        "proxies": sorted(list(set(proxies))),
+        "reflectors": sorted(list(set(reflectors)))
+    }
+
+@app.delete("/api/assets/delete")
+async def delete_asset_file(type: str, filename: str):
+    """Deletes a proxy or reflector file from the assets directory."""
+    if type == "proxy":
+        target_dir = get_assets_path() / "proxies"
+    elif type == "reflector":
+        target_dir = BASE_DIR / "resource" / "files" / "reflectors"
+    else:
+        return {"status": "error", "message": "Invalid asset type"}
+        
+    file_path = target_dir / filename
+    
+    # Security check: prevent directory traversal
+    if not str(file_path.resolve()).startswith(str(BASE_DIR.resolve())):
+        return {"status": "error", "message": "Security violation: Invalid path"}
+        
+    try:
+        if file_path.exists() and file_path.is_file():
+            # Protected files
+            if filename in ["default.txt", "auto_harvest.txt", "reflector.txt"]:
+                 return {"status": "error", "message": "Cannot delete core system assets"}
+            
+            await asyncio.to_thread(file_path.unlink)
+            return {"status": "success", "message": f"Deleted {filename}"}
+        return {"status": "error", "message": "File not found"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # --- API Endpoints ---
 @app.get("/api/health", response_model=HealthResponse)
