@@ -28,7 +28,8 @@ class ConnectionManager:
         await websocket.accept()
         async with self._lock:
             self._clients.add(websocket)
-        logger.info(f"Client connected. Total clients: {len(self._clients)}")
+            client_count = len(self._clients)
+        logger.info(f"Client connected. Total clients: {client_count}")
 
         current_state = await state_manager.get_state()
         await self.send_personal_message(
@@ -39,11 +40,12 @@ class ConnectionManager:
     async def disconnect(self, websocket: WebSocket) -> None:
         async with self._lock:
             self._clients.discard(websocket)
-        logger.info(f"Client disconnected. Total clients: {len(self._clients)}")
+            client_count = len(self._clients)
+        logger.info(f"Client disconnected. Total clients: {client_count}")
 
     async def send_personal_message(self, message: WSMessage, websocket: WebSocket) -> None:
         try:
-            await websocket.send_json(message.model_dump())
+            await websocket.send_json(message.model_dump(mode="json"))
         except Exception as exc:
             logger.warning(f"Failed to send personal message: {exc}")
             await self.disconnect(websocket)
@@ -56,7 +58,7 @@ class ConnectionManager:
         if not target_clients:
             return
 
-        payload_dict = message.model_dump()
+        payload_dict = message.model_dump(mode="json")
         tasks = [client.send_json(payload_dict) for client in target_clients]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
