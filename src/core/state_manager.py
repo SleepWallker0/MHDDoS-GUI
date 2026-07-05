@@ -12,6 +12,7 @@ class AttackStatus(str, Enum):
     STARTING = "starting"
     RUNNING = "running"
     STOPPING = "stopping"
+    STOPPED = "stopped"
     COMPLETED = "completed"
     ERROR = "error"
 
@@ -60,7 +61,7 @@ class StateManager:
 
             if status == AttackStatus.RUNNING and self._state.status != AttackStatus.RUNNING:
                 start_time = current_time
-            elif status in (AttackStatus.IDLE, AttackStatus.COMPLETED, AttackStatus.ERROR):
+            elif status in (AttackStatus.IDLE, AttackStatus.STOPPED, AttackStatus.COMPLETED, AttackStatus.ERROR):
                 start_time = None
 
             elapsed = (current_time - start_time) if start_time else 0.0
@@ -79,6 +80,33 @@ class StateManager:
 
         await self._notify_subscribers(snapshot)
         return snapshot
+
+    async def update_status(
+        self,
+        status: AttackStatus,
+        error_detail: str | None = None,
+    ) -> AttackStateSnapshot:
+        return await self.transition(status=status, error_detail=error_detail)
+
+    async def set_attack_params(
+        self,
+        *,
+        target: str | None = None,
+        duration: int | None = None,
+        threads: int | None = None,
+        method: str | None = None,
+        rpc: int | None = None,
+    ) -> AttackStateSnapshot:
+        stats_update: dict[str, Any] = {}
+        if duration is not None:
+            stats_update["duration"] = duration
+        if threads is not None:
+            stats_update["threads"] = threads
+        if rpc is not None:
+            stats_update["rpc"] = rpc
+        current_stats = self._state.stats.copy() if self._state.stats else {}
+        current_stats.update(stats_update)
+        return await self.transition(self._state.status, target=target, method=method, stats=current_stats)
 
     async def _notify_subscribers(self, snapshot: AttackStateSnapshot) -> None:
         for queue in list(self._subscribers):
