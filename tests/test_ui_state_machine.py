@@ -2,27 +2,32 @@ import os
 import pytest
 
 
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 def test_css_tactical_glow_definitions() -> None:
-    css_path = os.path.join("web", "design-pro-max.css")
+    css_path = os.path.join(root_dir, "web", "design-pro-max.css")
     with open(css_path, "r", encoding="utf-8") as f:
         content = f.read()
 
     assert ".tactical-glow-primary" in content, "Missing .tactical-glow-primary class in design-pro-max.css"
     assert ".tactical-glow-error" in content, "Missing .tactical-glow-error class in design-pro-max.css"
     assert "tactical-breathing-glow" in content, "Missing keyframe animation tactical-breathing-glow"
+    assert "transform: scale(" not in content.split("@keyframes tactical-breathing-glow")[1].split("}")[0] and "transform: scale(" not in content.split("@keyframes tactical-breathing-glow")[1].split("}")[1], "@keyframes tactical-breathing-glow must not animate transform: scale to avoid overriding button click micro-interactions"
 
 
 def test_html_button_markup() -> None:
-    html_path = os.path.join("web", "index.html")
+    html_path = os.path.join(root_dir, "web", "index.html")
     with open(html_path, "r", encoding="utf-8") as f:
         content = f.read()
 
     assert "tactical-glow-primary" in content, "deploy-hub-btn must use tactical-glow-primary instead of hardcoded shadow"
     assert 'id="deploy-hub-icon" class="material-symbols-outlined text-xl"' in content or 'class="material-symbols-outlined text-xl" id="deploy-hub-icon"' in content, "deploy-hub-icon must use text-xl for proper proportion"
+    assert "design-pro-max.css" in content, "index.html must link design-pro-max.css"
 
 
 def test_js_set_app_state_reconciliation() -> None:
-    js_path = os.path.join("web", "js", "ui", "ui-pro-max.js")
+    js_path = os.path.join(root_dir, "web", "js", "ui", "ui-pro-max.js")
     with open(js_path, "r", encoding="utf-8") as f:
         content = f.read()
 
@@ -33,3 +38,5 @@ def test_js_set_app_state_reconciliation() -> None:
     # Must toggle tactical-glow-error and tactical-glow-primary
     assert "tactical-glow-error" in content, "setAppState must apply tactical-glow-error in running state"
     assert "tactical-glow-primary" in content, "setAppState must apply tactical-glow-primary in idle state"
+    assert "if (!deployBtn || !deployIcon || !deployText) return;" in content, "setAppState must defensively check deployBtn, deployIcon, and deployText"
+    assert "views.forEach(n =>" in content or "const navs =" in content, "switchView must not reference undefined navs variable"

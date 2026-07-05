@@ -45,7 +45,7 @@ export class UIProMax {
         });
 
         // Update navigation active states
-        navs.forEach(n => {
+        views.forEach(n => {
             const btn = document.getElementById(`tab-nav-${n}`);
             if (btn) {
                 if (n === viewId) {
@@ -70,7 +70,7 @@ export class UIProMax {
         const deployIcon = document.getElementById('deploy-hub-icon');
         const deployText = document.getElementById('deploy-hub-text');
 
-        if (!deployBtn) return;
+        if (!deployBtn || !deployIcon || !deployText) return;
 
         // Step 1: Cleanup previous state classes and attributes
         deployBtn.classList.remove('bg-primary', 'bg-primary/70', 'bg-error', 'bg-error/70', 'tactical-glow-primary', 'tactical-glow-error', 'shadow-none', 'cursor-not-allowed');
