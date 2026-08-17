@@ -1,0 +1,40 @@
+cloudscraper==1.2.71
+certifi==2024.7.4
+dnspython==2.6.1
+requests==2.33.0
+impacket==0.10.0
+psutil>=7.2.2
+icmplib>=3.0.4
+pyasn1==0.6.3
+PyRoxy @ git+https://github.com/MatrixTM/PyRoxy.git@ea0f88dbc0573292ba5672124f69e4e7a31b544d
+yarl>=1.23.0
+PySocks==1.7.1
+fastapi>=0.135.1
+uvicorn>=0.41.0
+pywebview>=6.1
+websockets>=16.0
+aiohttp>=3.9.0
+python-multipart>=0.0.18
+pydantic>=2.0.0
+redis>=5.0.0
+playwright>=1.58.0
+playwright-stealth>=2.0.2
+nodriver>=0.48.1
+curl-cffi>=0.14.0
+httpx[http2]>=0.28.1
+h3>=4.4.2
+camoufox[geoip]>=0.4.0
+undetected-chromedriver>=3.5.5
+botasaurus>=4.0.0
+patchright>=1.49.0
+DrissionPage>=4.0.0
+zendriver>=0.1.0
+hrequests>=0.8.0
+urllib3==2.2.1
+chardet==5.2.0
+charset-normalizer==3.3.2
+aiodns>=3.2.0
+browserforge>=1.2.1
+
+[:python_version >= "3.12"]
+CloudflareBypassForScraping @ git+https://github.com/sarperavci/CloudflareBypassForScraping.git

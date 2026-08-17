@@ -102,5 +102,36 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await ws_manager.disconnect(websocket)
 
 
+# ========== ДОБАВЛЕННЫЕ ЭНДПОИНТЫ ДЛЯ СОВМЕСТИМОСТИ С ФРОНТЕНДОМ ==========
+
+@app.get("/api/recon/geo")
+async def geo_recon(target: str):
+    """Заглушка для гео-разведки (возвращаем фиктивные данные)"""
+    return {
+        "status": "success",
+        "data": {
+            "country": "US",
+            "city": "San Francisco",
+            "isp": "Cloudflare"
+        }
+    }
+
+@app.get("/api/files/list")
+async def list_files():
+    """Заглушка для списка файлов (возвращаем пустой список)"""
+    return {"files": []}
+
+@app.post("/api/attack/status")
+async def attack_status_post():
+    """Обработка POST-запроса статуса – перенаправляем на GET /api/status"""
+    return await get_status()
+
+@app.get("/api/attack/status")
+async def attack_status_get():
+    """GET-версия для статуса (на всякий случай)"""
+    return await get_status()
+
+# =========================================================================
+
 # Mount static web directory for frontend GUI
 app.mount("/", StaticFiles(directory="web", html=True), name="web")

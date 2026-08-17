@@ -1,0 +1,46 @@
+Metadata-Version: 2.4
+Name: mhddos-gui
+Version: 1.6.4
+Summary: A professional Desktop and Web GUI for MHDDoS with advanced evasion and async capabilities.
+Author: naravid19
+Requires-Python: <4.0,>=3.11
+License-File: LICENSE
+Requires-Dist: cloudscraper==1.2.71
+Requires-Dist: certifi==2024.7.4
+Requires-Dist: dnspython==2.6.1
+Requires-Dist: requests==2.33.0
+Requires-Dist: impacket==0.10.0
+Requires-Dist: psutil>=7.2.2
+Requires-Dist: icmplib>=3.0.4
+Requires-Dist: pyasn1==0.6.3
+Requires-Dist: PyRoxy @ git+https://github.com/MatrixTM/PyRoxy.git@ea0f88dbc0573292ba5672124f69e4e7a31b544d
+Requires-Dist: yarl>=1.23.0
+Requires-Dist: PySocks==1.7.1
+Requires-Dist: fastapi>=0.135.1
+Requires-Dist: uvicorn>=0.41.0
+Requires-Dist: pywebview>=6.1
+Requires-Dist: websockets>=16.0
+Requires-Dist: aiohttp>=3.9.0
+Requires-Dist: python-multipart>=0.0.18
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: redis>=5.0.0
+Requires-Dist: playwright>=1.58.0
+Requires-Dist: playwright-stealth>=2.0.2
+Requires-Dist: nodriver>=0.48.1
+Requires-Dist: curl-cffi>=0.14.0
+Requires-Dist: httpx[http2]>=0.28.1
+Requires-Dist: h3>=4.4.2
+Requires-Dist: camoufox[geoip]>=0.4.0
+Requires-Dist: undetected-chromedriver>=3.5.5
+Requires-Dist: botasaurus>=4.0.0
+Requires-Dist: patchright>=1.49.0
+Requires-Dist: DrissionPage>=4.0.0
+Requires-Dist: zendriver>=0.1.0
+Requires-Dist: hrequests>=0.8.0
+Requires-Dist: CloudflareBypassForScraping @ git+https://github.com/sarperavci/CloudflareBypassForScraping.git ; python_version >= "3.12"
+Requires-Dist: urllib3==2.2.1
+Requires-Dist: chardet==5.2.0
+Requires-Dist: charset-normalizer==3.3.2
+Requires-Dist: aiodns>=3.2.0
+Requires-Dist: browserforge>=1.2.1
+Dynamic: license-file

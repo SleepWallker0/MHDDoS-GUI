@@ -37,14 +37,26 @@ class WorkerService:
             if self._process is not None and self._process.returncode is None:
                 raise RuntimeError("An attack is already running.")
 
-            cmd = cmd_args if cmd_args is not None else [
-                sys.executable, "-m", "mhddos_gui.cli",
-                "--target", target,
-                "--duration", str(duration),
-                "--threads", str(threads),
-                "--method", method,
-                "--rpc", str(rpc)
-            ]
+            # ===== ИСПРАВЛЕННАЯ КОМАНДА =====
+            # Используем оригинальный start.py с аргументами:
+            # python start.py <method> <url> <socks_type> <threads> <proxylist> <rpc> <duration>
+            # socks_type = 0 (все типы), proxylist = "" (без прокси)
+            if cmd_args is None:
+                cmd = [
+                    sys.executable,
+                    "start.py",
+                    method,
+                    target,
+                    "0",                      # socks_type
+                    str(threads),
+                    "",                       # proxylist (пусто)
+                    str(rpc),
+                    str(duration),
+                ]
+            else:
+                cmd = cmd_args
+            # =================================
+
             logger.info(f"Starting attack process: {' '.join(cmd)}")
 
             try:
@@ -84,12 +96,12 @@ class WorkerService:
 
             logger.info(f"Terminating attack process tree (PID: {self._process.pid})...")
             await self._terminate_process_tree(self._process.pid)
-            
+
             try:
                 await asyncio.wait_for(self._process.wait(), timeout=5.0)
             except asyncio.TimeoutError:
                 logger.warning("Process did not exit in time after termination command.")
-            
+
             self._process = None
 
             if self._monitor_task and not self._monitor_task.done():
@@ -132,14 +144,14 @@ class WorkerService:
             async with self._lock:
                 if self._process is proc:
                     self._process = None
-            
+
             if returncode == 0:
                 logger.info("Attack process completed successfully.")
                 await state_manager.update_status(AttackStatus.COMPLETED)
             else:
                 logger.error(f"Attack process exited with unexpected code {returncode}.")
                 await state_manager.update_status(AttackStatus.ERROR, f"Process exited with code {returncode}")
-            
+
             await self._broadcast_state()
         except asyncio.CancelledError:
             logger.debug("Process monitor task cancelled.")
